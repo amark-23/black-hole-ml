@@ -36,12 +36,20 @@ docs/       figures and notes
 
 - **[sim/README.md](sim/README.md)** — the Schwarzschild simulator: how to build it, run
   the tests, generate orbits from the CLI, use the Python bindings, and the full gallery.
+- **[bhml/README.md](bhml/README.md)** — the ML models: the capture classifier and the
+  deflection surrogate, how to generate their data and train them, with results.
 - **[THEORY.md](THEORY.md)** — the physics and numerics: metric, geodesic equations,
   Runge–Kutta integration, and the analytic checkpoints the code is tested against.
 
 ## Status
 
-Phase 1 — Schwarzschild geodesic integrator complete: RK4 and adaptive Dormand–Prince
-RK45, validated against the analytic checkpoints (critical impact parameter, photon sphere,
-ISCO, weak-field deflection) plus first integrals. CLI, Python bindings, and visualization
-in place. Kerr, ray tracing, and the ML models follow.
+Phases 1–3 complete:
+
+- **Schwarzschild integrator** — RK4 and adaptive Dormand–Prince RK45, validated against
+  the analytic checkpoints (critical impact parameter, photon sphere, ISCO, weak-field
+  deflection) plus first integrals; CLI, Python bindings, and visualization.
+- **Capture classifier** — recovers `b_crit = 3√3 M` from labeled data (~99.9% accuracy).
+- **Deflection surrogate** — regresses the deflection angle to ~1.4% error, ~200× faster
+  than the integrator.
+
+Kerr, ray tracing, and the FNO / inverse-problem models follow.

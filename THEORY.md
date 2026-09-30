@@ -256,6 +256,20 @@ photon's direction, and the spin.
 
 ### Deflection surrogate
 
+The first regression task: predict a photon's total deflection angle
+$\delta\varphi$ from its impact parameter $b$ (escaping photons only,
+$b > b_\text{crit}$). The target spans **two regimes**:
+
+- **weak field** ($b \gg b_\text{crit}$): $\delta\varphi \to 4M/b$, the gentle
+  Einstein bending;
+- **strong field** ($b \to b_\text{crit}^{+}$): a logarithmic divergence,
+  $\delta\varphi \sim -\ln(b - b_\text{crit})$, as the photon whirls many times
+  near the photon sphere before escaping.
+
+A trained surrogate returns the deflection far faster than integrating the
+geodesic; its speed-versus-accuracy trade-off against the integrator, and how
+accuracy scales with the training-set size, are the results measured here.
+
 ### FNO image map
 
 ### Inverse problem
