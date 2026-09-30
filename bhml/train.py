@@ -155,7 +155,8 @@ def train_deflection(data_path: str) -> None:
     fig, ax = plt.subplots(figsize=(6, 4))
     ax.scatter(X[va, 0], true_va, s=6, alpha=0.3, color="gray", label="integrator (val)")
     ax.plot(b_grid[:, 0], pred_grid, color="#1f77b4", lw=2, label="surrogate")
-    ax.plot(b_grid[:, 0], 4.0 / b_grid[:, 0], color="black", ls="--", lw=1, label="4M/b (weak field)")
+    ax.plot(b_grid[:, 0], 4.0 / b_grid[:, 0], color="black", ls="--", lw=1,
+            label="4M/b (weak field)")
     ax.set_xlabel("impact parameter  b / M")
     ax.set_ylabel("deflection  delta phi  (rad)")
     ax.set_title(f"Deflection surrogate  (val rel. L2 {100 * rel_l2:.2f}%)")
@@ -165,7 +166,8 @@ def train_deflection(data_path: str) -> None:
     print("wrote docs/figures/deflection_fit.png")
 
     # speed: surrogate (batched) vs integrator (per call)
-    bench = np.random.default_rng(1).uniform(5.25, 30.0, size=2000).astype(np.float32).reshape(-1, 1)
+    bench = np.random.default_rng(1).uniform(5.25, 30.0, size=2000).astype(np.float32)
+    bench = bench.reshape(-1, 1)
     bt = torch.tensor((bench - mu_x) / sd_x)
     t0 = time.perf_counter()
     with torch.no_grad():

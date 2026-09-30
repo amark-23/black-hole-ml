@@ -226,13 +226,98 @@ are the **Dormand–Prince** pair (seven stages), the same method behind MATLAB'
 
 ## Kerr
 
+Rotating black hole of mass $M$ and spin $a = J/M$, with $0 \le a \le M$
+($a = M$ is extremal). Reduces to Schwarzschild at $a = 0$.
+
 ### Metric (Boyer–Lindquist)
 
-### Christoffel symbols
+With the shorthands
 
-### Frame dragging
+$$
+\Sigma = r^2 + a^2\cos^2\theta, \qquad \Delta = r^2 - 2Mr + a^2,
+$$
 
-### Photon orbits vs. spin
+the line element is
+
+$$
+ds^2 = -\left(1 - \frac{2Mr}{\Sigma}\right)dt^2
+       - \frac{4Mar\sin^2\theta}{\Sigma}\,dt\,d\varphi
+       + \frac{\Sigma}{\Delta}\,dr^2 + \Sigma\,d\theta^2
+       + \left(r^2 + a^2 + \frac{2Ma^2r\sin^2\theta}{\Sigma}\right)\sin^2\theta\,d\varphi^2.
+$$
+
+The off-diagonal $dt\,d\varphi$ term is **frame dragging**: rotation couples time
+and azimuth, so there is no static observer near the hole.
+
+### Horizons and ergosphere
+
+$\Delta = 0$ gives the horizons $r_\pm = M \pm \sqrt{M^2 - a^2}$; the outer one,
+$r_+ = M + \sqrt{M^2 - a^2}$, is the event horizon. Separately, $g_{tt} = 0$ gives
+the **ergosphere** boundary $r_\text{ergo}(\theta) = M + \sqrt{M^2 - a^2\cos^2\theta}$.
+Between $r_+$ and $r_\text{ergo}$ frame dragging is so strong that nothing can
+remain at fixed $\varphi$ — everything is forced to co-rotate.
+
+### Conserved quantities
+
+The Killing vectors $\partial_t$ and $\partial_\varphi$ give
+
+$$
+E = -p_t, \qquad L_z = p_\varphi,
+$$
+
+and Kerr has a third integral, **Carter's constant**, from a hidden Killing
+tensor:
+
+$$
+Q = p_\theta^2 + \cos^2\theta\left[a^2(m^2 - E^2) + \frac{L_z^2}{\sin^2\theta}\right],
+$$
+
+with $m = 0$ for photons and $m = 1$ for massive particles. $Q$ separates the
+$\theta$ motion and is the extra check that the integration is faithful.
+
+### Geodesic equations (Hamiltonian form)
+
+Rather than the ~40 Christoffel symbols, we integrate Hamilton's equations for
+the super-Hamiltonian $H = \tfrac12 g^{\mu\nu}p_\mu p_\nu$, whose value is fixed
+($H = 0$ for photons, $H = -\tfrac12$ for massive particles). State
+$y = (t, r, \theta, \varphi,\; p_t, p_r, p_\theta, p_\varphi)$:
+
+$$
+\frac{dx^\mu}{d\lambda} = g^{\mu\nu} p_\nu,
+\qquad
+\frac{dp_\mu}{d\lambda} = -\tfrac12\,(\partial_\mu g^{\alpha\beta})\,p_\alpha p_\beta.
+$$
+
+Because the metric depends only on $r$ and $\theta$, $\partial_t g = \partial_\varphi g = 0$,
+so $p_t$ and $p_\varphi$ are constant — energy and angular momentum are conserved
+automatically, with no special handling. Only $\partial_r$ and $\partial_\theta$
+of the inverse metric are needed. The nonzero inverse-metric components are
+
+$$
+g^{tt} = -\frac{(r^2+a^2)^2 - a^2\Delta\sin^2\theta}{\Sigma\,\Delta},
+\quad
+g^{t\varphi} = -\frac{2Mar}{\Sigma\,\Delta},
+\quad
+g^{\varphi\varphi} = \frac{\Delta - a^2\sin^2\theta}{\Sigma\,\Delta\,\sin^2\theta},
+$$
+
+$$
+g^{rr} = \frac{\Delta}{\Sigma}, \qquad g^{\theta\theta} = \frac{1}{\Sigma}.
+$$
+
+Their $r$- and $\theta$-derivatives are what MATLAB derives symbolically and
+exports as C, avoiding hand-algebra errors.
+
+### Analytic checkpoints (test targets)
+
+| Quantity | Value | Notes |
+| --- | --- | --- |
+| Outer horizon | $r_+ = M + \sqrt{M^2 - a^2}$ | $\to 2M$ at $a=0$, $\to M$ extremal |
+| Equatorial photon orbit (prograde) | $r = 2M\{1 + \cos[\tfrac{2}{3}\arccos(-a/M)]\}$ | $\to 3M$ at $a=0$, $\to M$ extremal |
+| Equatorial photon orbit (retrograde) | $r = 2M\{1 + \cos[\tfrac{2}{3}\arccos(+a/M)]\}$ | $\to 3M$ at $a=0$, $\to 4M$ extremal |
+| ISCO (prograde) | Bardeen formula | $\to 6M$ at $a=0$, $\to M$ extremal |
+| $a = 0$ limit | Schwarzschild | trajectories must match the Schwarzschild code |
+| $E$, $L_z$, $Q$, $H$ | constant | bounded drift over long integration |
 
 ## Ray tracing
 

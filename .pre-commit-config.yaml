@@ -1,0 +1,12 @@
+# Local lint gate: runs ruff before every commit, so lint errors can't reach CI.
+# One-time setup (in the venv):
+#     pip install pre-commit
+#     pre-commit install
+# After that, `git commit` runs ruff automatically and blocks on any error.
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.11
+    hooks:
+      - id: ruff            # lint (matches CI); auto-fixes what it can, blocks the rest
+        args: [--fix]
+ 
