@@ -32,10 +32,16 @@ dependencies = [
 # dependency); fno-pde is only a reference for the approach.
 
 [project.optional-dependencies]
-dev = ["pytest", "ruff"]
+# ruff pinned so a new release can't add rules that fail CI unexpectedly
+dev = ["pytest", "ruff==0.15.*"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["bhml"]
 
 [tool.ruff]
 line-length = 100
+
+[tool.ruff.lint]
+# Pin the rule set explicitly so local and CI apply the same checks regardless
+# of ruff's evolving defaults: pycodestyle (E), pyflakes (F), isort (I).
+select = ["E", "F", "I"]

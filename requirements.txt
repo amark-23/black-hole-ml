@@ -12,6 +12,6 @@ imageio
 # local CPU venv:
 # torch
 
-# Dev
+# Dev — ruff pinned so a new release can't add rules that fail CI unexpectedly
 pytest
-ruff
+ruff==0.15.*
