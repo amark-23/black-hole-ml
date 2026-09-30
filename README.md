@@ -11,9 +11,10 @@ efficient C++ core, then trains neural models on the generated data:
 - a **CNN inverse model** that recovers spin and inclination from an image.
 
 Physics runs in C++ (OpenMP, optional CUDA); the models and data pipelines are in Python
-(PyTorch). GPU-bound work runs in a Colab notebook that clones this repo; everything else
-runs on CPU. The neural-operator building blocks live in the companion repository
-[`fno-pde`](https://github.com/amark-23/fno-pde) and are reused here as a dependency.
+(PyTorch). GPU-bound work runs in a Kaggle notebook that clones this repo; everything else
+runs on CPU. The Fourier Neural Operator is implemented from scratch in this repo; the
+companion repository [`fno-pde`](https://github.com/amark-23/fno-pde) is kept only as a
+reference for the approach, not as a dependency.
 
 See [`THEORY.md`](THEORY.md) for the physics and the equations.
 

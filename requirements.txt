@@ -1,5 +1,17 @@
-# Python dependencies — filled in Phase 0.
-#
-# fno-pde is pulled in as a dependency; the mechanism (git URL install vs. editable
-# local checkout) is decided and pinned here before the first model is trained, e.g.:
-#   git+https://github.com/amark-23/fno-pde.git@<commit>
+# Runtime + dev dependencies for a local venv or CI.
+# On Kaggle, torch and the scientific stack are pre-installed, so only what is
+# missing needs installing there.
+
+# Core scientific stack
+numpy
+pyyaml
+matplotlib
+imageio
+
+# torch: comes from the environment (pre-installed on Kaggle). Uncomment for a
+# local CPU venv:
+# torch
+
+# Dev
+pytest
+ruff

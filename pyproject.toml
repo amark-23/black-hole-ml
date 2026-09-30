@@ -1,0 +1,41 @@
+# Python package definition for `bhml` — the data, models, and training code.
+#
+# Kept as a PURE-PYTHON package for now (hatchling backend). The pybind11
+# bindings in bhml/bindings/ compile the C++ core into an importable module;
+# whether that build is wired into `pip install` (via scikit-build-core + the
+# CMake project in sim/) or kept as a separate manual build step is deferred to
+# Phase 1, when the first binding actually exists.
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "bhml"
+version = "0.0.1"
+description = "Black-hole geodesic simulation with machine-learning surrogates"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "amark-23" }]
+dependencies = [
+    "numpy",
+    "pyyaml",
+    "matplotlib",
+    "imageio",
+]
+
+# NOTE: torch is NOT pinned here. It ships pre-installed on Kaggle, and pinning
+# it risks a heavy reinstall or a CUDA mismatch. It comes from the environment
+# (the Kaggle image, or requirements.txt for a local venv).
+#
+# The Fourier Neural Operator is implemented in bhml/models.py (not an external
+# dependency); fno-pde is only a reference for the approach.
+
+[project.optional-dependencies]
+dev = ["pytest", "ruff"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["bhml"]
+
+[tool.ruff]
+line-length = 100
