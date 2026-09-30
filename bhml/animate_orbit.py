@@ -11,12 +11,11 @@ Usage:
 import os
 import sys
 
-import matplotlib
-matplotlib.use("Agg")  # off-screen rendering; no window needed
+import imageio.v2 as imageio
+import matplotlib.pyplot as plt
+import numpy as np
 
-import imageio.v2 as imageio  # noqa: E402
-import matplotlib.pyplot as plt  # noqa: E402
-import numpy as np  # noqa: E402
+plt.switch_backend("Agg")  # render off-screen; no display window needed
 
 M = 1.0
 N_FRAMES = 120
