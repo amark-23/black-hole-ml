@@ -85,7 +85,7 @@ def train_capture(data_path: str) -> None:
     print(f"boundary spread over r0 in [{r0_lo:.0f}, {r0_hi:.0f}]: "
           f"{min(crossings):.4f} to {max(crossings):.4f}  (should be ~flat)")
 
-    os.makedirs(os.path.join("docs", "figures"), exist_ok=True)
+    os.makedirs(os.path.join("ml", "figures"), exist_ok=True)
     fig, ax = plt.subplots(figsize=(6, 4))
     ax.plot(b_grid, p, color="#1f77b4", label="model P(capture)")
     ax.axvline(b_crit, color="black", ls="--", lw=1.0, label=f"analytic 3*sqrt(3) = {b_crit:.3f}")
@@ -96,8 +96,8 @@ def train_capture(data_path: str) -> None:
     ax.set_title(f"Learned capture boundary  (val acc {val_acc:.3f})")
     ax.legend()
     fig.tight_layout()
-    fig.savefig(os.path.join("docs", "figures", "capture_boundary.png"), dpi=150)
-    print("wrote docs/figures/capture_boundary.png")
+    fig.savefig(os.path.join("ml", "figures", "capture_boundary.png"), dpi=150)
+    print("wrote ml/figures/capture_boundary.png")
 
     os.makedirs("checkpoints", exist_ok=True)
     torch.save({"state_dict": model.state_dict(), "mu": mu, "sd": sd,
@@ -151,7 +151,7 @@ def train_deflection(data_path: str) -> None:
     with torch.no_grad():
         pred_grid = model(torch.tensor((b_grid - mu_x) / sd_x)).numpy() * sd_y + mu_y
 
-    os.makedirs(os.path.join("docs", "figures"), exist_ok=True)
+    os.makedirs(os.path.join("ml", "figures"), exist_ok=True)
     fig, ax = plt.subplots(figsize=(6, 4))
     ax.scatter(X[va, 0], true_va, s=6, alpha=0.3, color="gray", label="integrator (val)")
     ax.plot(b_grid[:, 0], pred_grid, color="#1f77b4", lw=2, label="surrogate")
@@ -162,8 +162,8 @@ def train_deflection(data_path: str) -> None:
     ax.set_title(f"Deflection surrogate  (val rel. L2 {100 * rel_l2:.2f}%)")
     ax.legend()
     fig.tight_layout()
-    fig.savefig(os.path.join("docs", "figures", "deflection_fit.png"), dpi=150)
-    print("wrote docs/figures/deflection_fit.png")
+    fig.savefig(os.path.join("ml", "figures", "deflection_fit.png"), dpi=150)
+    print("wrote ml/figures/deflection_fit.png")
 
     # speed: surrogate (batched) vs integrator (per call)
     bench = np.random.default_rng(1).uniform(5.25, 30.0, size=2000).astype(np.float32)

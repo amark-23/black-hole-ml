@@ -36,7 +36,7 @@ dependencies = [
 dev = ["pytest", "ruff==0.15.*"]
 
 [tool.hatch.build.targets.wheel]
-packages = ["bhml"]
+packages = ["ml/bhml"]
 
 [tool.ruff]
 line-length = 100
@@ -45,3 +45,6 @@ line-length = 100
 # Pin the rule set explicitly so local and CI apply the same checks regardless
 # of ruff's evolving defaults: pycodestyle (E), pyflakes (F), isort (I).
 select = ["E", "F", "I"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["bhml"]

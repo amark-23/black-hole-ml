@@ -64,7 +64,7 @@ endif()
 
 # ---------------------------------------------------------------------------
 # Optional Python bindings (pybind11). Off by default; enable with
-#   cmake -S sim -B sim/build -DBHSIM_PYTHON=ON
+#   cmake -S simulation -B simulation/build -DBHSIM_PYTHON=ON
 # pybind11 is fetched automatically, and the built module `_bhsim` is placed
 # inside the bhml/ package so `from bhml import _bhsim` works from the repo root.
 # ---------------------------------------------------------------------------
@@ -78,12 +78,12 @@ if(BHSIM_PYTHON)
   FetchContent_MakeAvailable(pybind11)
 
   pybind11_add_module(_bhsim
-    ../bhml/bindings/bhsim_py.cpp
+    ../ml/bhml/bindings/bhsim_py.cpp
     src/schwarzschild.cpp
   )
   target_include_directories(_bhsim PRIVATE include)
 
-  set(_bhml_dir ${CMAKE_CURRENT_SOURCE_DIR}/../bhml)
+  set(_bhml_dir ${CMAKE_CURRENT_SOURCE_DIR}/../ml/bhml)
   set_target_properties(_bhsim PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY         ${_bhml_dir}
     RUNTIME_OUTPUT_DIRECTORY         ${_bhml_dir}

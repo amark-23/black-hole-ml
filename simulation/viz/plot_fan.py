@@ -27,9 +27,9 @@ def find_exe() -> str:
     if len(sys.argv) > 1:
         return sys.argv[1]
     candidates = [
-        os.path.join("sim", "build", "Release", "bhsim.exe"),  # MSVC
-        os.path.join("sim", "build", "bhsim"),                 # make/ninja
-        os.path.join("sim", "build", "Debug", "bhsim.exe"),
+        os.path.join("simulation", "build", "Release", "bhsim.exe"),  # MSVC
+        os.path.join("simulation", "build", "bhsim"),                 # make/ninja
+        os.path.join("simulation", "build", "Debug", "bhsim.exe"),
     ]
     for c in candidates:
         if os.path.exists(c):
@@ -60,7 +60,8 @@ def main() -> None:
     exe = find_exe()
     if not os.path.exists(exe):
         sys.exit(f"bhsim not found at {exe!r} — build it first, or pass the path as arg 1.")
-    out_path = sys.argv[2] if len(sys.argv) > 2 else os.path.join("docs", "figures", "fan.png")
+    default_out = os.path.join("simulation", "figures", "fan.png")
+    out_path = sys.argv[2] if len(sys.argv) > 2 else default_out
     os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
 
     fig, ax = plt.subplots(figsize=(7, 7))

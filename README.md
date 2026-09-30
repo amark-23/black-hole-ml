@@ -1,58 +1,69 @@
 # black-hole-ml
 
-A C++ black-hole geodesic simulator paired with machine-learning models trained on its output.
+Simulating a black hole from scratch, and teaching neural networks to predict
+what it does.
 
-The project models light and matter around Schwarzschild and Kerr black holes with an
-efficient C++ core, then trains neural models on the generated data:
+The project has two halves that mirror each other:
 
-- a **capture classifier** (is a photon captured or does it escape?),
-- a **deflection-angle surrogate** (fast regression replacing the integrator),
-- a **Fourier Neural Operator** mapping accretion-disk emission to ray-traced images, and
-- a **CNN inverse model** that recovers spin and inclination from an image.
+- [`simulation/`](simulation) models the black hole itself: a C++ engine that
+  traces light and matter around Schwarzschild (non-rotating) and Kerr (spinning)
+  black holes, validated against known physics and drawn as orbits, shadows, and
+  animations.
+- [`ml/`](ml) trains machine-learning models on the simulator's output: a
+  classifier that rediscovers the capture threshold, and a surrogate that predicts
+  light bending hundreds of times faster than integrating it.
 
-Physics runs in C++ (OpenMP, optional CUDA); the models and data pipelines are in Python
-(PyTorch). GPU-bound work runs in a Kaggle notebook that clones this repo; everything else
-runs on CPU. The Fourier Neural Operator is implemented from scratch in this repo; the
-companion repository [`fno-pde`](https://github.com/amark-23/fno-pde) is kept only as a
-reference for the approach, not as a dependency.
+![Black-hole shadow morphing with spin](simulation/figures/kerr_spin.gif)
 
-![The black-hole shadow](docs/figures/fan.png)
+*As a black hole spins faster, frame dragging pulls its shadow off-center. A
+richer three-dimensional render is tba.*
 
-*A beam of photons past a Schwarzschild black hole: rays with |b| < 3√3 M are captured (red),
-carving out the shadow; the rest bend around it. More in [sim/README.md](sim/README.md).*
+## Quick install
+
+You need a C++17 compiler with CMake (on Windows, the Visual Studio Build Tools
+with the C++ workload) and Python 3.10+.
+
+```
+# 1. build and test the simulator
+cmake -S simulation -B simulation/build
+cmake --build simulation/build --config Release
+ctest --test-dir simulation/build --output-on-failure
+
+# 2. set up Python (for the plots and the ML)
+python -m venv .venv
+.venv\Scripts\activate            # Windows;  source .venv/bin/activate elsewhere
+pip install -e ".[dev]"
+```
+
+From here, [`simulation/README.md`](simulation/README.md) shows how to generate
+orbits and figures, and [`ml/README.md`](ml/README.md) shows how to generate data
+and train the models. Each README carries the relevant physics and the commands
+together.
+
+## The simulator
+
+A geodesic integrator built up from the simplest black hole to a spinning one:
+
+- **Schwarzschild** orbits from a smooth second-order form of the equations of
+  motion, advanced with RK4 and adaptive Dormand-Prince RK45.
+- **Kerr** orbits in full three dimensions, from Hamilton's equations, with the
+  messy metric derivatives derived symbolically in MATLAB and exported to C++.
+- Checked against the analytic landmarks (photon sphere, critical impact
+  parameter, ISCO, weak-field deflection) and, for Kerr, against an independent
+  MATLAB reference that it matches to about one part in $10^{11}$.
+
+## The machine learning
+
+Small models trained on data the simulator produces:
+
+- **Capture classifier**: recovers the capture threshold $b_\text{crit} = 3\sqrt3\,M$
+  from labeled examples, to about 99.9% accuracy.
+- **Deflection surrogate**: predicts light bending to about 1.4% error while
+  running roughly 200 times faster than the integrator.
 
 ## Layout
 
 ```
-sim/        C++ core: metrics, integrators, ray tracing (CMake, OpenMP, optional CUDA)
-bhml/       Python package: data generation, models, training, visualization
-matlab/     symbolic derivations and reference-trajectory fixtures (dev-time only)
-configs/    run configurations
-notebooks/  Kaggle notebooks for GPU work
-docs/       figures and notes
+simulation/   C++ engine, tests, MATLAB derivation, plotting/animation, figures
+ml/           Python package (models, data, training), notebooks, figures
 ```
-
-## Documentation
-
-- **[sim/README.md](sim/README.md)** — the Schwarzschild simulator: how to build it, run
-  the tests, generate orbits from the CLI, use the Python bindings, and the full gallery.
-- **[bhml/README.md](bhml/README.md)** — the ML models: the capture classifier and the
-  deflection surrogate, how to generate their data and train them, with results.
-- **[THEORY.md](THEORY.md)** — the physics and numerics: metric, geodesic equations,
-  Runge–Kutta integration, and the analytic checkpoints the code is tested against.
-
-## Status
-
-Phases 1–4 complete:
-
-- **Schwarzschild integrator** — RK4 and adaptive Dormand–Prince RK45, validated against
-  the analytic checkpoints (critical impact parameter, photon sphere, ISCO, weak-field
-  deflection) plus first integrals; CLI, Python bindings, and visualization.
-- **Capture classifier** — recovers `b_crit = 3√3 M` from labeled data (~99.9% accuracy).
-- **Deflection surrogate** — regresses the deflection angle to ~1.4% error, ~200× faster
-  than the integrator.
-- **Kerr integrator** — full 3-D Hamiltonian geodesics for spinning black holes, metric
-  derivatives derived in MATLAB; matches a MATLAB `ode113` reference to ~1e-11 and reduces
-  to Schwarzschild at `a = 0`. Frame dragging visualized as an asymmetric shadow.
-
-Ray tracing and the FNO / inverse-problem models follow.

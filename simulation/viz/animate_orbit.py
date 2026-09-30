@@ -24,7 +24,8 @@ FPS = 25
 
 def main() -> None:
     csv_path = sys.argv[1] if len(sys.argv) > 1 else "orbit.csv"
-    out_path = sys.argv[2] if len(sys.argv) > 2 else os.path.join("docs", "figures", "whirl.gif")
+    default_out = os.path.join("simulation", "figures", "whirl.gif")
+    out_path = sys.argv[2] if len(sys.argv) > 2 else default_out
     os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
 
     data = np.genfromtxt(csv_path, delimiter=",", names=True)

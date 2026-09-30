@@ -17,8 +17,8 @@ syms r th a M real
 this_dir = fileparts(mfilename('fullpath'));
 if isempty(this_dir); this_dir = pwd; end
 repo    = fileparts(this_dir);
-inc_dir = fullfile(repo, 'sim', 'include');
-fix_dir = fullfile(repo, 'sim', 'tests', 'fixtures');
+inc_dir = fullfile(repo, 'include');
+fix_dir = fullfile(repo, 'tests', 'fixtures');
 if ~exist(inc_dir, 'dir'); mkdir(inc_dir); end
 if ~exist(fix_dir, 'dir'); mkdir(fix_dir); end
 

@@ -1,9 +1,10 @@
+ML
 name: CI
-
+ 
 on:
   push:
   pull_request:
-
+ 
 jobs:
   cpp:
     name: C++ build & tests
@@ -13,12 +14,12 @@ jobs:
       - name: Install build tools
         run: sudo apt-get update && sudo apt-get install -y cmake g++
       - name: Configure
-        run: cmake -S sim -B sim/build -DCMAKE_BUILD_TYPE=Release
+        run: cmake -S simulation -B simulation/build -DCMAKE_BUILD_TYPE=Release
       - name: Build
-        run: cmake --build sim/build --parallel
+        run: cmake --build simulation/build --parallel
       - name: Test
-        run: ctest --test-dir sim/build --output-on-failure
-
+        run: ctest --test-dir simulation/build --output-on-failure
+ 
   python:
     name: Python lint & tests
     runs-on: ubuntu-latest
@@ -37,3 +38,4 @@ jobs:
       - name: Test
         # Exit code 5 = "no tests collected"; treat that as success until tests exist.
         run: pytest -q || [ "$?" -eq 5 ]
+ 

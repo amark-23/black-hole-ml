@@ -1,37 +1,41 @@
-"""Kerr photon fan: the asymmetric shadow from frame dragging.
+"""Animate the Kerr shadow as spin ramps up.
 
-Fires an equatorial photon beam past a spinning black hole for a = 0 and
-a = 0.9 side by side. Captured rays are red; frame dragging shifts the capture
-region (the shadow) off-center. The hole spins counter-clockwise, so prograde
-rays (co-rotating) are captured at smaller impact parameter than retrograde ones.
+Sweeps the spin a from 0 to 0.99 and, at each value, fires an equatorial photon
+beam past the hole. As a grows, frame dragging pushes the captured region (red)
+off-center and lopsided -- the shadow morphs from Schwarzschild-symmetric to the
+classic asymmetric Kerr shape. Frames are stitched into a GIF.
 
 Usage:
-    python bhml/plot_kerr_fan.py [path/to/bhsim(.exe)] [out.png]
+    python bhml/animate_kerr_spin.py [path/to/bhsim(.exe)] [out.gif]
 """
 
 import os
 import subprocess
 import sys
 
+import imageio.v2 as imageio
 import matplotlib.pyplot as plt
 import numpy as np
 
-R0 = 60.0
-B_MAX = 10.0
-N_RAYS = 161
-WINDOW = 15.0
-SPINS = [0.0, 0.9]
+plt.switch_backend("Agg")  # render off-screen
+
+R0 = 40.0
+B_MAX = 9.0
+N_RAYS = 81
+WINDOW = 12.0
+N_FRAMES = 25
+FPS = 12
 
 
 def find_exe() -> str:
     if len(sys.argv) > 1:
         return sys.argv[1]
-    for c in [os.path.join("sim", "build", "Release", "bhsim.exe"),
-              os.path.join("sim", "build", "bhsim"),
-              os.path.join("sim", "build", "Debug", "bhsim.exe")]:
+    for c in [os.path.join("simulation", "build", "Release", "bhsim.exe"),
+              os.path.join("simulation", "build", "bhsim"),
+              os.path.join("simulation", "build", "Debug", "bhsim.exe")]:
         if os.path.exists(c):
             return c
-    return os.path.join("sim", "build", "Release", "bhsim.exe")
+    return os.path.join("simulation", "build", "Release", "bhsim.exe")
 
 
 def trace(exe: str, a: float, b: float):
@@ -45,8 +49,6 @@ def trace(exe: str, a: float, b: float):
     y = np.atleast_1d(d["y"])
     if x.size < 2:
         return None, None, False
-    # Kerr is axisymmetric, so rotating the whole path in phi is exact.
-    # Rotate so the entry velocity points along -x (a parallel beam from the right).
     delta = np.pi - np.arctan2(y[1] - y[0], x[1] - x[0])
     cs, sn = np.cos(delta), np.sin(delta)
     return x * cs - y * sn, x * sn + y * cs, "captured" in res.stderr
@@ -56,14 +58,16 @@ def main() -> None:
     exe = find_exe()
     if not os.path.exists(exe):
         sys.exit(f"bhsim not found at {exe!r} — build it first, or pass the path as arg 1.")
-    out_path = sys.argv[2] if len(sys.argv) > 2 else os.path.join("docs", "figures", "kerr_fan.png")
+    default_out = os.path.join("simulation", "figures", "kerr_spin.gif")
+    out_path = sys.argv[2] if len(sys.argv) > 2 else default_out
     os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
 
-    fig, axes = plt.subplots(1, 2, figsize=(13, 6.6))
-    for ax, a in zip(axes, SPINS):
-        r_plus = 1.0 + np.sqrt(1.0 - a * a)  # outer horizon (M = 1)
+    fig, ax = plt.subplots(figsize=(6, 6))
+    frames = []
+    for a in np.linspace(0.0, 0.99, N_FRAMES):
+        ax.clear()
+        r_plus = 1.0 + np.sqrt(1.0 - a * a)
         ax.add_patch(plt.Circle((0, 0), r_plus, color="black", zorder=5))
-
         for b in np.linspace(-B_MAX, B_MAX, N_RAYS):
             if abs(b) < 1e-6:
                 continue
@@ -72,19 +76,20 @@ def main() -> None:
                 continue
             ax.plot(xr, yr, lw=0.6, alpha=0.75, zorder=3,
                     color="#d62728" if captured else "#1f77b4")
-
         ax.set_aspect("equal")
         ax.set_xlim(-WINDOW, WINDOW)
         ax.set_ylim(-WINDOW, WINDOW)
         ax.set_xlabel("x / M")
         ax.set_ylabel("y / M")
-        ax.set_title(f"a = {a}" + ("  (Schwarzschild)" if a == 0 else "  (frame dragging)"))
+        ax.set_title(f"Kerr shadow,  spin a = {a:.2f}")
+        fig.tight_layout()
+        fig.canvas.draw()
+        rgba = np.asarray(fig.canvas.buffer_rgba())
+        frames.append(rgba[..., :3].copy())
+        print(f"  a = {a:.2f} done")
 
-    fig.suptitle("Photon beam past a black hole: the shadow shifts with spin")
-    fig.tight_layout()
-    fig.savefig(out_path, dpi=150)
-    print(f"wrote {out_path}")
-    plt.show()
+    imageio.mimsave(out_path, frames, fps=FPS, loop=0)
+    print(f"wrote {out_path} ({len(frames)} frames)")
 
 
 if __name__ == "__main__":
