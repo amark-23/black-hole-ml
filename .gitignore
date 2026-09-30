@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.ipynb_checkpoints/
+
+# C++ / CMake build
+build/
+*.o
+*.obj
+*.so
+*.dll
+*.exe
+
+# Data & model artifacts
+data/
+*.npy
+*.npz
+checkpoints/
+*.pt
+*.pth
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
