@@ -1,4 +1,7 @@
 #pragma once
+#include <cmath>
+
+#include "kerr_generated.hpp"  // auto-generated kerr_terms(), from matlab/derive_kerr.m
 
 // The spacetime geometry. For Phase 1 this is just Schwarzschild, described by a
 // single number (the mass M) and the metric potential f(r) = 1 - 2M/r that
@@ -17,6 +20,23 @@ struct Schwarzschild {
 
     // Event horizon radius, where f(r) = 0.
     double horizon() const { return 2.0 * M; }
+};
+
+// Rotating (Kerr) black hole: mass M and spin a = J/M, with 0 <= a <= M.
+// The heavy algebra (inverse metric + derivatives) lives in kerr_terms();
+// this struct just carries the parameters and the basic geometry.
+struct Kerr {
+    double M = 1.0;
+    double a = 0.0;  // spin; a = 0 recovers Schwarzschild
+
+    double Sigma(double r, double th) const {
+        const double c = std::cos(th);
+        return r * r + a * a * c * c;
+    }
+    double Delta(double r) const { return r * r - 2.0 * M * r + a * a; }
+
+    // Outer event horizon r_+ = M + sqrt(M^2 - a^2).
+    double horizon() const { return M + std::sqrt(M * M - a * a); }
 };
 
 }  // namespace bhsim

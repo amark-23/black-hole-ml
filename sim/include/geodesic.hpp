@@ -41,6 +41,18 @@ struct Row {
     double lambda, r, phi, x, y;
 };
 
+// --- Kerr: full 8-D phase-space state (motion is no longer planar) --------- //
+
+// y = (t, r, theta, phi, p_t, p_r, p_theta, p_phi)
+using KerrState = std::array<double, 8>;
+
+enum KerrIndex : std::size_t {
+    KT = 0, KR = 1, KTH = 2, KPHI = 3, KPT = 4, KPR = 5, KPTH = 6, KPPH = 7
+};
+
+// Hamiltonian RHS dy/dlambda for a Kerr geodesic (implemented in kerr.cpp).
+KerrState kerr_rhs(const KerrState& y, const Kerr& metric);
+
 // --- implemented in schwarzschild.cpp ---
 
 // Right-hand side dy/dlambda of the geodesic equations, from THEORY.md.
