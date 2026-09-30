@@ -110,6 +110,20 @@ $$
 The $3Mu^2$ term is the general-relativistic correction; without it these reduce
 to the Newtonian conic sections.
 
+### Circular orbits and stability
+
+A **circular orbit** sits where the radial force vanishes,
+$\dot p_r = -\tfrac{1}{2}V'(r) = 0$ — an extremum of the effective potential. It
+is **stable** at a minimum ($V'' > 0$) and **unstable** at a maximum
+($V'' < 0$); the marginal case $V'' = 0$ is the innermost stable circular orbit.
+
+- **Photons** ($\varepsilon = 0$): the only circular orbit is the photon sphere
+  $r = 3M$, always a maximum — hence unstable, which is exactly why photons near
+  it either spiral in or peel away (the $b_\text{crit}$ boundary).
+- **Massive** ($\varepsilon = 1$): circular orbits exist for $r > 3M$ with
+  $L^2 = \dfrac{M r^2}{r - 3M}$; they are stable for $r > 6M$ and unstable for
+  $3M < r < 6M$. The boundary $r = 6M$ is the **ISCO**.
+
 ### Analytic checkpoints (test targets)
 
 | Quantity | Value | Used to test |
@@ -119,6 +133,15 @@ to the Newtonian conic sections.
 | ISCO (massive) | $r = 6M$ | innermost stable circular orbit |
 | Weak-field deflection | $\Delta\varphi \to 4M/b$ | large-$b$ photon bending (Einstein) |
 | $E$, $L$ | constant | bounded drift over long integration |
+
+The deflection has a known weak-field series,
+
+$$
+\delta\varphi = \frac{4M}{b} + \frac{15\pi}{4}\left(\frac{M}{b}\right)^2 + \cdots,
+$$
+
+whose first term is Einstein's result. The code is checked against the leading
+term (as $b \to \infty$) and against the two-term series at finite $b$.
 
 ## Numerical integration
 
@@ -168,12 +191,38 @@ measures the accumulated truncation error, and a nonzero drift that grows with
 step size is the fastest way to catch a wrong RHS. In practice, with RK4 at
 $h = 0.01$, the constraint holds to $\sim 10^{-14}$ — machine precision.
 
-**Adaptive RK45 (Phase 1 follow-up).** A fixed step is wasteful: orbits need
-tiny steps near the black hole, where the field is steep, and can take large
-steps far away. RK45 embeds a 4th- and a 5th-order estimate in the same
-evaluations, uses their difference as a local error estimate, and resizes $h$ to
-hold that error under a tolerance — small steps where the geometry is sharp,
-large steps where it is flat.
+**Adaptive RK45 (Dormand–Prince).** A fixed step is wasteful: orbits need tiny
+steps near the hole, where the field is steep, and can take large steps far away.
+An *embedded* Runge–Kutta pair computes two estimates of the step from the **same**
+stage evaluations — one of order 5, one of order 4. Their difference estimates
+the local truncation error,
+
+$$
+e = y^{(5)} - y^{(4)}.
+$$
+
+We reduce $e$ to a single scaled number using an absolute tolerance
+$\text{atol}$ (a floor for components near zero) and a relative tolerance
+$\text{rtol}$:
+
+$$
+\text{err} = \sqrt{\frac{1}{N}\sum_{i=1}^{N}
+  \left(\frac{e_i}{\text{atol} + \text{rtol}\,|y_i|}\right)^2}.
+$$
+
+The step is **accepted** when $\text{err} \le 1$ and **rejected** otherwise. The
+next step size comes from the standard controller
+
+$$
+h_\text{new} = h \cdot \mathrm{clip}\!\left(S\,\text{err}^{-1/5},\;
+  f_\text{min},\; f_\text{max}\right),
+$$
+
+with safety factor $S \approx 0.9$ and clip factors that stop $h$ changing too
+violently in one step. The exponent $1/5$ is set by the order of the method. A
+rejected step is retried with the smaller $h$. The specific stage coefficients
+are the **Dormand–Prince** pair (seven stages), the same method behind MATLAB's
+`ode45`.
 
 ## Kerr
 
