@@ -39,6 +39,7 @@ bhsim photon 6 30              > orbit.csv     # photon, b=6, start r0=30  (esca
 bhsim photon 5.3 30            > whirl.csv     # just above b_crit         (whirls, escapes)
 bhsim photon 4 30              > capture.csv   # below b_crit              (captured)
 bhsim massive 0.97 4.0 20 1500 > rosette.csv   # bound orbit: E, L, r0, lambda_max
+bhsim kerr 0.9 6 30            > kerr.csv       # equatorial photon, spin a=0.9 (b>0 prograde)
 ```
 
 On Windows, prefix with the path: `.\sim\build\Release\bhsim.exe photon 6 30 > orbit.csv`.
@@ -59,9 +60,11 @@ Activate the venv in each new terminal (look for the `(.venv)` prefix).
 python bhml/plot_orbit.py orbit.csv      # -> docs/figures/orbit.png
 python bhml/plot_fan.py                    # -> docs/figures/fan.png  (the shadow)
 python bhml/animate_orbit.py whirl.csv     # -> docs/figures/whirl.gif
+python bhml/plot_kerr_fan.py               # -> docs/figures/kerr_fan.png  (a=0 vs a=0.9)
+python bhml/animate_kerr_spin.py           # -> docs/figures/kerr_spin.gif (shadow vs spin)
 ```
 
-`plot_fan.py` locates the built `bhsim` automatically and fires a beam of rays.
+The fan and Kerr scripts locate the built `bhsim` automatically and fire a beam of rays.
 
 ### Optional: Python bindings
 
@@ -113,3 +116,18 @@ Regenerate with `bhsim photon 5.3 30 > whirl.csv` then
 ellipse, the orbit precesses — the same relativistic effect as Mercury's
 perihelion advance. Regenerate with `bhsim massive 0.97 4.0 20 1500 > rosette.csv`
 then `python bhml/plot_orbit.py rosette.csv docs/figures/rosette.png`.
+
+![Kerr shadow: a=0 vs a=0.9](../docs/figures/kerr_fan.png)
+
+**The Kerr shadow (frame dragging).** The same photon beam past a non-spinning
+(*a* = 0) and a rapidly spinning (*a* = 0.9) black hole. On the right the captured
+region is shifted off-center: co-rotating (prograde) rays thread closer and
+escape, while counter-rotating ones are swept in from farther out — the
+asymmetric, D-shaped shadow of a Kerr hole. Regenerate with
+`python bhml/plot_kerr_fan.py`.
+
+![Kerr shadow morphing with spin](../docs/figures/kerr_spin.gif)
+
+**Shadow vs. spin.** Sweeping the spin from *a* = 0 to 0.99: the horizon shrinks
+(*r*₊ = *M* + √(*M*² − *a*²)) and the capture region slides off-center as frame
+dragging strengthens. Regenerate with `python bhml/animate_kerr_spin.py`.

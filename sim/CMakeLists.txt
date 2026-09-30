@@ -100,4 +100,10 @@ if(BHSIM_BUILD_TESTS)
   add_executable(test_schwarzschild tests/test_schwarzschild.cpp)
   target_link_libraries(test_schwarzschild PRIVATE bhsim_core)
   add_test(NAME schwarzschild COMMAND test_schwarzschild)
+
+  add_executable(test_kerr tests/test_kerr.cpp)
+  target_link_libraries(test_kerr PRIVATE bhsim_core)
+  target_compile_definitions(test_kerr PRIVATE
+    KERR_FIXTURE="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/kerr_ref_a05.csv")
+  add_test(NAME kerr COMMAND test_kerr)
 endif()

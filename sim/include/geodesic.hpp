@@ -53,6 +53,18 @@ enum KerrIndex : std::size_t {
 // Hamiltonian RHS dy/dlambda for a Kerr geodesic (implemented in kerr.cpp).
 KerrState kerr_rhs(const KerrState& y, const Kerr& metric);
 
+// Equatorial photon incoming from r0 with impact parameter b (E = 1, L_z = b).
+// Positive b co-rotates (prograde), negative counter-rotates (retrograde).
+KerrState kerr_equatorial_photon(const Kerr& metric, double r0, double b);
+
+// Integrate a Kerr trajectory, sampling every accepted step (x, y in the
+// equatorial plane). Same stop conditions as trace(): captured / escaped /
+// lambda_max / max_steps.
+std::vector<Row> trace_kerr(const Kerr& metric, KerrState y0, double r_escape,
+                            double lambda_max, std::string& outcome,
+                            double atol = 1e-10, double rtol = 1e-10,
+                            long max_steps = 2000000);
+
 // --- implemented in schwarzschild.cpp ---
 
 // Right-hand side dy/dlambda of the geodesic equations, from THEORY.md.

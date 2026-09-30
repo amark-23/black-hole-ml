@@ -1,5 +1,8 @@
 #include "geodesic.hpp"
 
+#include <cmath>
+
+#include "integrator.hpp"
 #include "metric.hpp"
 
 // Kerr geodesics in Hamiltonian form (THEORY.md, "Geodesic equations
@@ -35,6 +38,46 @@ KerrState kerr_rhs(const KerrState& y, const Kerr& bh) {
     // dy[KPT] = 0, dy[KPPH] = 0
 
     return dy;
+}
+
+// Equatorial photon (theta = pi/2, p_theta = 0), inward, from the H = 0
+// constraint g^{ab} p_a p_b = 0 solved for p_r.
+KerrState kerr_equatorial_photon(const Kerr& bh, double r0, double b) {
+    const double PI = std::acos(-1.0);
+    KerrState y{};
+    y[KT] = 0.0; y[KR] = r0; y[KTH] = PI / 2; y[KPHI] = 0.0;
+    y[KPT] = -1.0; y[KPPH] = b; y[KPTH] = 0.0;
+
+    const KerrTerms k = kerr_terms(r0, PI / 2, bh.a, bh.M);
+    const double pt = y[KPT], pph = y[KPPH];
+    const double pr2 = -(k.gtt * pt * pt + 2.0 * k.gtph * pt * pph + k.gphph * pph * pph) / k.grr;
+    y[KPR] = -std::sqrt(pr2 > 0.0 ? pr2 : 0.0);
+    return y;
+}
+
+std::vector<Row> trace_kerr(const Kerr& bh, KerrState y, double r_escape,
+                            double lambda_max, std::string& outcome,
+                            double atol, double rtol, long max_steps) {
+    const auto rhs = [&](const KerrState& s) { return kerr_rhs(s, bh); };
+    const double r_capture = 1.01 * bh.horizon();
+
+    std::vector<Row> rows;
+    auto push = [&](double lam, const KerrState& s) {
+        rows.push_back({lam, s[KR], s[KPHI], s[KR] * std::cos(s[KPHI]), s[KR] * std::sin(s[KPHI])});
+    };
+
+    double lambda = 0.0, h = 0.1;
+    push(lambda, y);
+    outcome = "max steps reached";
+
+    for (long i = 0; i < max_steps; ++i) {
+        lambda += adaptive_step<8>(y, h, rhs, atol, rtol);
+        push(lambda, y);
+        if (y[KR] <= r_capture)                 { outcome = "captured";  break; }
+        if (y[KPR] > 0.0 && y[KR] >= r_escape)  { outcome = "escaped";   break; }
+        if (lambda >= lambda_max)               { outcome = "max lambda"; break; }
+    }
+    return rows;
 }
 
 }  // namespace bhsim

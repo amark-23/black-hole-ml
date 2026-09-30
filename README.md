@@ -43,7 +43,7 @@ docs/       figures and notes
 
 ## Status
 
-Phases 1–3 complete:
+Phases 1–4 complete:
 
 - **Schwarzschild integrator** — RK4 and adaptive Dormand–Prince RK45, validated against
   the analytic checkpoints (critical impact parameter, photon sphere, ISCO, weak-field
@@ -51,5 +51,8 @@ Phases 1–3 complete:
 - **Capture classifier** — recovers `b_crit = 3√3 M` from labeled data (~99.9% accuracy).
 - **Deflection surrogate** — regresses the deflection angle to ~1.4% error, ~200× faster
   than the integrator.
+- **Kerr integrator** — full 3-D Hamiltonian geodesics for spinning black holes, metric
+  derivatives derived in MATLAB; matches a MATLAB `ode113` reference to ~1e-11 and reduces
+  to Schwarzschild at `a = 0`. Frame dragging visualized as an asymmetric shadow.
 
-Kerr, ray tracing, and the FNO / inverse-problem models follow.
+Ray tracing and the FNO / inverse-problem models follow.
