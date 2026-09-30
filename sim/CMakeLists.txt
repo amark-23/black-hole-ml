@@ -4,8 +4,9 @@ project(bhsim LANGUAGES CXX)
 # ---------------------------------------------------------------------------
 # Options
 # ---------------------------------------------------------------------------
-option(BHSIM_ENABLE_CUDA "Build the CUDA ray tracer" OFF)
-option(BHSIM_BUILD_TESTS "Build the C++ tests"       ON)
+option(BHSIM_ENABLE_CUDA "Build the CUDA ray tracer"        OFF)
+option(BHSIM_BUILD_TESTS "Build the C++ tests"             ON)
+option(BHSIM_PYTHON      "Build the pybind11 Python module" OFF)
 
 # ---------------------------------------------------------------------------
 # C++ standard
@@ -59,6 +60,36 @@ if(BHSIM_ENABLE_CUDA)
   add_executable(bhsim_raytrace cuda/raytrace.cu)
   target_include_directories(bhsim_raytrace PRIVATE include)
   set_target_properties(bhsim_raytrace PROPERTIES CUDA_STANDARD 17)
+endif()
+
+# ---------------------------------------------------------------------------
+# Optional Python bindings (pybind11). Off by default; enable with
+#   cmake -S sim -B sim/build -DBHSIM_PYTHON=ON
+# pybind11 is fetched automatically, and the built module `_bhsim` is placed
+# inside the bhml/ package so `from bhml import _bhsim` works from the repo root.
+# ---------------------------------------------------------------------------
+if(BHSIM_PYTHON)
+  include(FetchContent)
+  FetchContent_Declare(
+    pybind11
+    GIT_REPOSITORY https://github.com/pybind/pybind11
+    GIT_TAG        v2.13.6
+  )
+  FetchContent_MakeAvailable(pybind11)
+
+  pybind11_add_module(_bhsim
+    ../bhml/bindings/bhsim_py.cpp
+    src/schwarzschild.cpp
+  )
+  target_include_directories(_bhsim PRIVATE include)
+
+  set(_bhml_dir ${CMAKE_CURRENT_SOURCE_DIR}/../bhml)
+  set_target_properties(_bhsim PROPERTIES
+    LIBRARY_OUTPUT_DIRECTORY         ${_bhml_dir}
+    RUNTIME_OUTPUT_DIRECTORY         ${_bhml_dir}
+    LIBRARY_OUTPUT_DIRECTORY_RELEASE ${_bhml_dir}
+    RUNTIME_OUTPUT_DIRECTORY_RELEASE ${_bhml_dir}
+  )
 endif()
 
 # ---------------------------------------------------------------------------

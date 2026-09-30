@@ -1,6 +1,8 @@
 #pragma once
 #include <array>
 #include <cstddef>
+#include <string>
+#include <vector>
 
 #include "metric.hpp"
 
@@ -33,13 +35,30 @@ inline double impact_parameter(const Constants& c) { return c.L / c.E; }
 // E = 1, so L = b and eps = 0.
 inline Constants photon_constants(double b) { return {1.0, b, 0.0}; }
 
+// One sampled point along a trajectory: affine parameter, polar (r, phi), and
+// Cartesian (x, y) = (r cos phi, r sin phi) for plotting.
+struct Row {
+    double lambda, r, phi, x, y;
+};
+
 // --- implemented in schwarzschild.cpp ---
 
 // Right-hand side dy/dlambda of the geodesic equations, from THEORY.md.
 State geodesic_rhs(const State& y, const Schwarzschild& metric, const Constants& c);
 
-// Initial state for a photon incoming from radius r0 with impact parameter b.
-// Starts at phi = 0, t = 0, with p_r < 0 (moving inward).
+// Initial state at radius r0 for the given constants, from the constraint
+// p_r^2 = E^2 - V(r0). Starts at t = phi = 0; inward gives p_r < 0.
+State initial_state(const Schwarzschild& metric, const Constants& c, double r0, bool inward);
+
+// Convenience: initial state for a photon incoming with impact parameter b.
 State photon_initial_state(const Schwarzschild& metric, double r0, double b);
+
+// Integrate from y0 with adaptive RK45, sampling every accepted step. Stops when
+// the orbit is captured (reaches the horizon), escapes (passes periapsis and
+// climbs back past r_escape), exceeds lambda_max, or hits max_steps. The reason
+// is written to `outcome`.
+std::vector<Row> trace(const Schwarzschild& metric, const Constants& c, State y0,
+                       double r_escape, double lambda_max, std::string& outcome,
+                       double atol = 1e-10, double rtol = 1e-10, long max_steps = 2000000);
 
 }  // namespace bhsim
