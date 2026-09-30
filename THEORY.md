@@ -244,6 +244,16 @@ are the **Dormand–Prince** pair (seven stages), the same method behind MATLAB'
 
 ### Capture classifier
 
+The first ML task: predict whether a photon is captured from its initial
+conditions — a binary classifier. For Schwarzschild the outcome is decided
+entirely by the impact parameter (captured iff $b < b_\text{crit} = 3\sqrt3\,M$),
+so a model trained on $b$ should learn a **decision boundary at $3\sqrt3\,M$**.
+The start radius $r_0$ is included as a **decoy** feature the model should learn
+to ignore, since capture is independent of it. Recovering the analytic boundary
+validates the whole pipeline (integrator → dataset → training loop). The task
+becomes genuinely multi-dimensional at Kerr, where capture depends on $b$, the
+photon's direction, and the spin.
+
 ### Deflection surrogate
 
 ### FNO image map
