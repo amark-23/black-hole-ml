@@ -50,7 +50,9 @@ Result: about 99.9% validation accuracy; the learned boundary sits at roughly
 5.19 against the analytic 5.196; and the boundary barely moves as $r_0$ varies,
 so the decoy is ignored.
 
-![Learned capture boundary](figures/capture_boundary.png)
+<p align="center">
+  <img src="figures/capture_boundary.png" alt="Learned capture boundary">
+</p>
 
 ## Deflection surrogate
 
@@ -76,7 +78,9 @@ python -m bhml.train deflection  # -> ml/figures/deflection_fit.png, checkpoint,
 Result: about 1.4% relative L2 error across the whole range, and roughly 200 times
 faster than the integrator (batched inference).
 
-![Deflection surrogate](figures/deflection_fit.png)
+<p align="center">
+  <img src="figures/deflection_fit.png" alt="Deflection surrogate">
+</p>
 
 ## Notebooks
 

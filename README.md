@@ -13,7 +13,9 @@ The project has 2 parts:
   classifier that rediscovers the capture threshold, and a surrogate that predicts
   light bending hundreds of times faster than integrating it.
 
-![Black-hole shadow morphing with spin](simulation/figures/kerr_spin.gif)
+<p align="center">
+  <img src="simulation/figures/kerr_spin.gif" alt="Black-hole shadow morphing with spin">
+</p>
 
 *As a black hole spins faster, frame dragging pulls its shadow off-center. A
 richer three-dimensional render is tba.*
