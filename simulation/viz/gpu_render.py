@@ -28,10 +28,13 @@ def kerr_terms(r, th, a, M):
     c2 = cos(th) ** 2
     cs = cos(th) * sin(th)
     # On the spin axis (theta = 0 or pi) Boyer-Lindquist coordinates are singular:
-    # the terms below carry 1/sin^2 and 1/sin^3 and would blow up. Floor sin here so
-    # a ray grazing the axis gets a bounded value instead of an explosive kick. The
-    # floor only bites within ~1 degree of the axis, so it changes nothing elsewhere.
-    sin_safe = torch.clamp(sin(th).abs(), min=2e-2)
+    # the terms below carry 1/sin^2 and 1/sin^3. We keep this barrier HONEST (only a
+    # tiny floor to avoid a literal divide-by-zero), because it is exactly the force
+    # that turns a near-axis ray around; flooring it harder stops the turnaround and
+    # lets the ray punch through the pole. The turnaround is instead resolved by
+    # shrinking the step near the axis (see render_frame), and any ray that still
+    # crosses the axis is reflected there.
+    sin_safe = torch.clamp(sin(th).abs(), min=1e-5)
     s2_safe = sin_safe * sin_safe
     Sig = a * a * c2 + r * r                 # Sigma = r^2 + a^2 cos^2 th
     Del = -2.0 * M * r + a * a + r * r       # Delta = r^2 - 2Mr + a^2
@@ -253,13 +256,26 @@ def render_frame(cam, a, sky, lut, disk_scale, device, n_steps=900, C0=0.02,
             break  # only a few near-critical stragglers left; call them dark
         r_before = Y[:, KR].clone()
         th_before = Y[:, KTH].clone()
-        # Step size scales with radius (big far away, small near the hole) and also
-        # shrinks toward the spin axis, where the theta motion turns around sharply
-        # for near-axis rays; without this they overshoot and scatter into a streak.
-        sin_now = torch.sin(Y[:, KTH:KTH + 1]).abs()
-        h = torch.clamp(C0 * Y[:, KR:KR + 1] * (0.2 + 0.8 * sin_now), max=0.6)
+        # Step size scales with radius (big far away, small near the hole) and
+        # shrinks toward the spin axis in proportion to sin(theta), where the theta
+        # motion turns around very sharply for near-axis rays. Without this the
+        # turnaround is overshot and those rays scatter into a vertical streak.
+        sin_now = torch.sin(Y[:, KTH:KTH + 1]).abs().clamp(min=0.04)
+        h = torch.clamp(C0 * Y[:, KR:KR + 1] * sin_now, max=0.6)
         Yn = rk4(Y, h, a, M)
         Y = torch.where(active[:, None], Yn, Y)
+
+        # Pole crossing: if a ray steps past the spin axis (theta out of [0, pi]),
+        # reflect it back and advance phi by pi. This is the exact continuation of a
+        # geodesic through the axis, and keeps BL coordinates well defined.
+        th = Y[:, KTH]
+        below = active & (th < 0.0)
+        above = active & (th > PI)
+        Y[below, KTH] = -th[below]
+        Y[above, KTH] = 2.0 * PI - th[above]
+        flip = below | above
+        Y[flip, KPHI] = Y[flip, KPHI] + PI
+        Y[flip, KPTH] = -Y[flip, KPTH]
 
         r_now = Y[:, KR]
         # horizon
