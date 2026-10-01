@@ -56,6 +56,31 @@ KerrState camera_ray(const Camera& cam, double alpha, double beta) {
     return y;
 }
 
+// Redshift factor g = nu_observed / nu_emitted for light leaving the disk at
+// radius r (equatorial) and reaching a static observer at infinity. The gas
+// there moves on a prograde circular geodesic, so g folds together the Doppler
+// shift of that orbital motion with the gravitational shift out of the well.
+//
+//   static observer at infinity:  nu_obs   = -p_t = E
+//   orbiting emitter (u^phi = Omega u^t):  nu_emit = -u^t (p_t + Omega p_phi)
+//
+// with the Kerr equatorial circular-orbit values (Bardeen 1972), in M units:
+//   Omega = sqrt(M) / (r^3/2 + a sqrt(M))
+//   u^t   = (r^3/2 + a sqrt(M)) / sqrt(r^3 - 3 M r^2 + 2 a sqrt(M) r^3/2)
+// The square root is real only outside the ISCO, so inside it we return 0.
+static double disk_redshift(const Kerr& bh, double r, double p_t, double p_phi) {
+    const double a = bh.a, M = bh.M;
+    const double sM = std::sqrt(M);
+    const double r32 = std::pow(r, 1.5);
+    const double denom = r * r * r - 3.0 * M * r * r + 2.0 * a * sM * r32;
+    if (denom <= 0.0) return 0.0;
+    const double omega = sM / (r32 + a * sM);
+    const double ut = (r32 + a * sM) / std::sqrt(denom);
+    const double nu_emit = -ut * (p_t + omega * p_phi);
+    if (nu_emit <= 0.0) return 0.0;
+    return (-p_t) / nu_emit;
+}
+
 double trace_pixel(const Kerr& bh, const Camera& cam, double alpha, double beta) {
     const double PI = std::acos(-1.0);
     const auto rhs = [&](const KerrState& s) { return kerr_rhs(s, bh); };
@@ -86,7 +111,10 @@ double trace_pixel(const Kerr& bh, const Camera& cam, double alpha, double beta)
             const double r_cross = r_before + frac * (y[KR] - r_before);
             if (r_cross >= cam.r_in && r_cross <= cam.r_out) {
                 const double v = cam.r_in / r_cross;  // in (0, 1], 1 at the edge
-                return v * v;                         // inner disk glows brighter
+                const double emis = v * v;            // inner disk glows brighter
+                // p_t and p_phi are conserved, so y still holds their disk values.
+                const double g = disk_redshift(bh, r_cross, y[KPT], y[KPPH]);
+                return emis * g * g * g * g;          // observed brightness ~ g^4
             }
         }
 

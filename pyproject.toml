@@ -40,6 +40,8 @@ packages = ["ml/bhml"]
 
 [tool.ruff]
 line-length = 100
+extend-exclude = ["*.ipynb"]  # notebooks are exploratory; the .py modules get linted
+force-exclude = true  # honour the exclude even when pre-commit passes a path
 
 [tool.ruff.lint]
 # Pin the rule set explicitly so local and CI apply the same checks regardless

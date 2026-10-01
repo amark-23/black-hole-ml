@@ -48,9 +48,15 @@ def render(exe: str, a: float, res: int) -> np.ndarray:
 
 
 def colorize(img: np.ndarray) -> np.ndarray:
-    """Map brightness in [0, 1] to 8-bit RGB with the chosen colormap."""
-    hi = img.max() or 1.0
-    rgba = matplotlib.colormaps[CMAP](img / hi)
+    """Map brightness to 8-bit RGB with the chosen colormap.
+
+    Doppler beaming gives the approaching side a huge brightness spike, so a few
+    pixels would otherwise wash out everything else. Normalising to a high
+    percentile (not the raw maximum) keeps the dim receding side visible.
+    """
+    lit = img[img > 0]
+    hi = np.percentile(lit, 99.5) if lit.size else 1.0
+    rgba = matplotlib.colormaps[CMAP](np.clip(img / hi, 0.0, 1.0))
     return (rgba[..., :3] * 255).astype(np.uint8)
 
 
