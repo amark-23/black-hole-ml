@@ -3,6 +3,7 @@
 Imported by the Kaggle notebook; also runnable standalone for a quick test.
 """
 import math
+import time
 
 import gpu_render as G
 import imageio.v2 as imageio
@@ -30,22 +31,35 @@ def render_flythrough(cfg, device, out_mp4="flythrough.mp4", out_gif=None,
 
     # Calibrate disk brightness once, from a frame where the beamed side is in
     # view, so brightness is stable across the whole clip (no flicker).
+    # This first render also pays the one-off torch.compile cost (tens of seconds).
+    use_compile = cfg.get("use_compile", True)
+    opts = dict(n_steps=cfg["n_steps"], C0=cfg["C0"], use_compile=use_compile)
+    t0 = time.time()
     cam0 = camera_at(0.0, cfg)
     _, bright, otype = G.render_frame(cam0, a, sky, lut, 1.0, device,
-                                      n_steps=cfg["n_steps"], C0=cfg["C0"], return_raw=True)
+                                      return_raw=True, **opts)
     disk_b = bright[otype == 2]
     scale = torch.quantile(disk_b, 0.995).item() if disk_b.numel() else 1.0
     scale = max(scale, 1e-3)
-    progress(f"disk_scale = {scale:.3f}")
+    mode = "compiled" if (use_compile and G._STEP["compiled"]) else "eager"
+    progress(f"disk_scale = {scale:.3f} (calibration frame {time.time() - t0:.1f}s, "
+             f"{mode} mode; the first frame of a session includes compiling)")
 
     frames = []
     n = cfg["n_frames"]
+    t_start = time.time()
     for i in range(n):
+        t_frame = time.time()
         cam = camera_at(i / n, cfg)
-        f = G.render_frame(cam, a, sky, lut, scale, device, n_steps=cfg["n_steps"], C0=cfg["C0"])
+        f = G.render_frame(cam, a, sky, lut, scale, device, **opts)
+        # .cpu() waits for the GPU, so the timing below is the true frame time.
         frames.append((f.cpu().numpy() * 255).astype(np.uint8))
+        dt = time.time() - t_frame
         if (i + 1) % max(1, n // 20) == 0 or i == n - 1:
-            progress(f"frame {i + 1}/{n}")
+            elapsed = time.time() - t_start
+            eta = elapsed / (i + 1) * (n - i - 1)
+            progress(f"frame {i + 1}/{n}  {dt:.2f}s/frame  "
+                     f"elapsed {elapsed / 60:.1f} min  eta {eta / 60:.1f} min")
 
     imageio.mimsave(out_mp4, frames, fps=cfg["fps"], quality=8, macro_block_size=None)
     progress(f"wrote {out_mp4}")
@@ -56,8 +70,12 @@ def render_flythrough(cfg, device, out_mp4="flythrough.mp4", out_gif=None,
     return frames
 
 
+# Fast defaults: 640x360, 96 frames, for a first result in minutes. Cost scales
+# with pixels x frames, so scale res / n_frames up once you like the look. Keep
+# n_steps at 1500: finished rays are dropped from the batch, so the late steps
+# are cheap, while fewer steps leaves outgoing sky rays unfinished (dark specks).
 DEFAULTS = dict(
     a=0.9, incl0=78.0, incl_sway=10.0, dist0=55.0, dolly=12.0, fov=22.0,
-    r_in=6.0, r_out=20.0, res=(576, 1024), n_frames=144, n_steps=1500, C0=0.013,
-    fps=30,
+    r_in=6.0, r_out=20.0, res=(360, 640), n_frames=96, n_steps=1500, C0=0.013,
+    fps=30, use_compile=True,
 )
