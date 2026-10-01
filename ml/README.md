@@ -107,7 +107,10 @@ Rather than finished pictures, it stores where every pixel's light ray ended up:
 Those fields *are* the black hole's lensing map. Push any disk emission profile
 $E(r, \varphi)$ through them (`emission_to_image` in
 [`datagen/lensing.py`](datagen/lensing.py)) and out comes the observed image, so a
-single trace yields unlimited (emission, image) pairs.
+single trace yields unlimited (emission, image) pairs. Pass `hit_g` as well to
+include the relativistic shift: the observed brightness is $g^4$ times the
+emitted one, so gas moving toward the camera is boosted and gas moving away is
+dimmed.
 
 <p align="center">
   <img src="figures/kerr_lensing_sample.png" alt="One dataset sample: per-pixel ray outcome, disk hit radius, and the observed image from a sample emission">

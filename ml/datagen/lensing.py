@@ -180,14 +180,20 @@ def generate(out_dir, n=2000, res=128, r_out=18.0, seed=0, shard=250, batch=None
     return manifest
 
 
-def emission_to_image(otype, hit_r, hit_ph, emission_fn):
+def emission_to_image(otype, hit_r, hit_ph, emission_fn, hit_g=None, g_pow=4.0):
     """Form the observed intensity map for one sample by pushing a disk emission
-    field through its stored geometry. emission_fn(r, phi) -> intensity (arrays).
-    Shadow and sky pixels are 0. This is the forward operator the FNO learns and
-    the inverse problem inverts."""
+    field through its stored geometry. emission_fn(r, phi) -> intensity (arrays),
+    as emitted in the gas's own frame. Pass the sample's hit_g to include the
+    relativistic shift: the observed (bolometric) intensity is g^4 times the
+    emitted one, so gas moving toward the camera is boosted and gas moving away is
+    dimmed. Without hit_g the map is purely geometric, with no Doppler or
+    gravitational shift. Shadow and sky pixels are 0. This is the forward operator
+    the FNO learns and the inverse problem inverts."""
     disk = otype == 2
     img = np.zeros(hit_r.shape, np.float32)
     if disk.any():
-        img[disk] = emission_fn(hit_r[disk].astype(np.float32),
-                                hit_ph[disk].astype(np.float32))
+        e = emission_fn(hit_r[disk].astype(np.float32), hit_ph[disk].astype(np.float32))
+        if hit_g is not None:
+            e = e * hit_g[disk].astype(np.float32) ** g_pow
+        img[disk] = e
     return img

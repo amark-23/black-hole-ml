@@ -3,8 +3,10 @@
 // failure, which CTest reports as a failed test.
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdio>
+#include <stdexcept>
 
 #include "geodesic.hpp"
 #include "integrator.hpp"
@@ -185,6 +187,30 @@ int main() {
         // (b) b = 500: approaches Einstein's 4M/b to < 2%
         const double d2 = deflection(500.0, r0);
         check(std::fabs(d2 / (4.0 * bh.M / 500.0) - 1.0) < 0.02, "deflection -> 4M/b (b=500)");
+    }
+
+    // 8. Adaptive RK45 recovers from a trial step that lands on a singularity.
+    //    dy/dl = -y is fine for y > 0 but undefined (NaN) below it, so a first
+    //    trial step that is far too large produces a NaN error estimate. That must
+    //    shrink the step like any failed one; growing it instead would retry
+    //    forever, so the right-hand side gives up after a fixed number of calls.
+    {
+        long calls = 0;
+        const auto rhs = [&](const std::array<double, 1>& s) {
+            if (++calls > 10000) throw std::runtime_error("adaptive_step never settled");
+            return std::array<double, 1>{s[0] > 0.0 ? -s[0] : std::nan("")};
+        };
+        std::array<double, 1> y{1.0};
+        double h = 10.0, taken = 0.0;
+        bool ok = true;
+        try {
+            taken = adaptive_step<1>(y, h, rhs, 1e-10, 1e-10);
+        } catch (const std::runtime_error&) {
+            ok = false;
+        }
+        check(ok && taken > 0.0 && taken < 10.0 && std::isfinite(y[0]) &&
+                  std::fabs(y[0] - std::exp(-taken)) < 1e-8,
+              "RK45: a NaN trial step is shrunk, not grown");
     }
 
     std::printf("\n%d failure(s)\n", failures);

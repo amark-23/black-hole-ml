@@ -109,7 +109,13 @@ double adaptive_step(std::array<double, N>& y, double& h, F&& f,
         const double errn = std::sqrt(sum / static_cast<double>(N));
         const double h_taken = h;
 
-        double fac = (errn > 0.0) ? SAFETY * std::pow(errn, -0.2) : MAX_FAC;
+        // A NaN error (a trial step that ran into a singularity) must shrink the
+        // step like any failed one. Left to the formula, NaN fails the errn > 0
+        // test and is treated like a zero error: the step grows and is retried
+        // forever.
+        double fac = std::isnan(errn) ? MIN_FAC
+                   : (errn > 0.0)     ? SAFETY * std::pow(errn, -0.2)
+                                      : MAX_FAC;
         fac = std::min(MAX_FAC, std::max(MIN_FAC, fac));
 
         if (errn <= 1.0 || h_taken <= H_FLOOR) {
