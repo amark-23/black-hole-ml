@@ -145,7 +145,8 @@ def isco_radius(a, M=1.0):
 
 def disk_redshift(r, p_t, p_ph, a, M=1.0):
     """g = nu_obs / nu_emit for the orbiting disk gas; mirrors disk_redshift()
-    in raytrace.cpp. Returns 0 inside the ISCO (no stable circular orbit)."""
+    in raytrace.cpp. Returns 0 inside the circular photon orbit (3M at a=0), where
+    the root turns negative; that is well inside the ISCO, so the disk never hits it."""
     sM = math.sqrt(M)
     r32 = r ** 1.5
     denom = r ** 3 - 3.0 * M * r * r + 2.0 * a * sM * r32

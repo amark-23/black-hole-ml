@@ -1,9 +1,10 @@
-// Phase 4 tests: validate the Kerr Hamiltonian integrator three ways —
+// Kerr integrator tests: validate the Hamiltonian integrator and the ray tracer —
 //   1. a = 0 reproduces the Schwarzschild integrator (equatorial photon),
 //   2. it matches the MATLAB ode113 reference fixture (a = 0.5),
 //   3. the Hamiltonian H and the constants E, L_z stay conserved,
 //   4. the ISCO formula hits its known values,
-//   5. a ray flying over the spin axis still finds the disk behind the hole.
+//   5. a ray flying over the spin axis still finds the disk behind the hole,
+//   6. a wide field keeps its outer edge (the escape test needs p_r > 0).
 // Returns nonzero on any failure (CTest reports it as failed).
 
 #include <algorithm>
@@ -166,6 +167,22 @@ int main() {
             if (!(beside > 0.0 && std::fabs(on_axis - beside) < 0.05 * beside)) ok = false;
         }
         check(ok, "ray over the spin axis sees the lensed disk (no axis seam)");
+    }
+
+    {
+        // 6. A wide field must keep its outer edge. Every ray starts on the image
+        //    plane at r = sqrt(r_cam^2 + alpha^2 + beta^2) > r_cam, so escaping on
+        //    "r > r_cam" alone fires on entry and blacks out rays far from centre.
+        //    With a wide disk (r_out = 80) a pixel 60 M off-axis crosses the disk at
+        //    r ~ 60 and must shade as disk, not sky. This is 0 without the p_r > 0
+        //    guard in trace_pixel, positive with it.
+        Camera cam;
+        cam.a = 0.9;
+        cam.r_out = 80.0;
+        const Kerr bh{1.0, cam.a};
+        const double far = trace_pixel(bh, cam, 60.0, 0.0);
+        std::printf("       wide-field pixel (alpha=60, r_out=80): brightness = %.3e\n", far);
+        check(far > 0.0, "wide-field ray keeps the disk (no lost outer edge)");
     }
 
     std::printf("\n%d failure(s)\n", failures);

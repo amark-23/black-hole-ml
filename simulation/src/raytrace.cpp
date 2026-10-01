@@ -67,7 +67,9 @@ KerrState camera_ray(const Camera& cam, double alpha, double beta) {
 // with the Kerr equatorial circular-orbit values (Bardeen 1972), in M units:
 //   Omega = sqrt(M) / (r^3/2 + a sqrt(M))
 //   u^t   = (r^3/2 + a sqrt(M)) / sqrt(r^3 - 3 M r^2 + 2 a sqrt(M) r^3/2)
-// The square root is real only outside the ISCO, so inside it we return 0.
+// The square root is real down to the circular photon orbit (3M at a = 0), not the
+// ISCO (6M); inside that there is no circular orbit and we return 0. The disk
+// starts at or outside the ISCO, so in practice r stays well clear of this.
 static double disk_redshift(const Kerr& bh, double r, double p_t, double p_phi) {
     const double a = bh.a, M = bh.M;
     const double sM = std::sqrt(M);
@@ -131,8 +133,12 @@ double trace_pixel(const Kerr& bh, const Camera& cam, double alpha, double beta)
             }
         }
 
-        // Climbed back out past the camera: empty sky.
-        if (y[KR] > cam.r_cam) return 0.0;
+        // Climbed back out past the camera and is now outbound: empty sky. The
+        // p_r > 0 guard is essential: every ray STARTS on the image plane at
+        // r = sqrt(r_cam^2 + alpha^2 + beta^2), which is already > r_cam. Without
+        // the guard a ray far from the image centre is called sky on entry, before
+        // it travels inward, and a wide field silently loses its outer edge.
+        if (y[KR] > cam.r_cam && y[KPR] > 0.0) return 0.0;
     }
     return 0.0;  // ran out of steps near the hole: treat as dark
 }
