@@ -373,6 +373,24 @@ into the integrator's coordinates and momenta, with the energy fixed to $E = 1$,
 and handed to the same adaptive Kerr stepper the orbits use. At $a = 0$ the Kerr
 metric is exactly Schwarzschild, so the one renderer draws both.
 
+### The disk's light: Doppler and gravitational shift
+
+The disk is not a static glow. Its gas orbits the hole on circular geodesics,
+fast, so the light reaching us is shifted in frequency by a single factor
+$g = \nu_\text{observed} / \nu_\text{emitted}$ that folds two effects together:
+the Doppler shift of the orbiting gas, and the gravitational shift of climbing
+out of the well. For a static observer far away and an emitter orbiting with
+angular velocity $\Omega$,
+
+$$g = \frac{-p_t}{-u^t\,(p_t + \Omega\, p_\phi)},$$
+
+using the Kerr circular-orbit values $\Omega = \sqrt{M}/(r^{3/2} + a\sqrt{M})$
+and $u^t = (r^{3/2} + a\sqrt{M}) / \sqrt{r^3 - 3Mr^2 + 2a\sqrt{M}\,r^{3/2}}$. The
+photon's conserved $p_t$ and $p_\phi$ are already carried in its state at the
+crossing. Observed brightness goes as $g^4$: the side of the disk turning toward
+us is blueshifted and beamed bright, the receding side reddened and dimmed. This
+happens even at $a = 0$, since a Schwarzschild disk still orbits.
+
 ### What the image shows
 
 ![Ray-traced Schwarzschild black hole with an accretion disk](figures/raytrace_schwarzschild.png)
@@ -384,15 +402,16 @@ instead of being hidden by it. The matching arc below is the underside of that
 same far side, bent the other way. The thin bright ring hugging the shadow is the
 **photon ring**, light that looped close to the photon sphere before escaping.
 The dark centre is the shadow, a little wider than the horizon itself because the
-hole bends even near-miss rays inward.
+hole bends even near-miss rays inward. One side blazes far brighter than the
+other: that is the Doppler beaming above, the gas on that side orbiting toward us.
 
-Turn on spin and the picture goes lopsided:
+Turn on spin and the picture goes further lopsided:
 
 ![Ray-traced Kerr black hole](figures/raytrace_kerr.png)
 
 Frame dragging sweeps light around the direction of rotation, flattening one side
 of the shadow into the characteristic Kerr "D". Sweeping the spin up shows the
-shadow sliding and reshaping:
+shadow sliding and reshaping while the beamed side stays bright:
 
 ![Ray-traced shadow morphing with spin](figures/raytrace_spin.gif)
 
@@ -416,7 +435,30 @@ python simulation/viz/render_image.py --sweep    # writes the spin gif
 On Windows, pass the executable path if it is not found automatically, for
 example `python simulation/viz/render_image.py .\simulation\build\Release\bhsim.exe`.
 
-The disk here is a flat glowing annulus with a simple brightness falloff; its
-inner edge is fixed rather than tracked to the spin-dependent ISCO, and the
-colours are geometric only. Doppler and gravitational shifting of the disk light,
-a spin-dependent inner edge, and a camera that flies around the hole are tba.
+The disk here is a flat glowing annulus with an $r^{-2}$ emissivity, shaded by the
+full relativistic $g^4$ factor above.
+
+### Cinematic flythrough (GPU)
+
+The C++ renderer above draws one image on the CPU. For a moving camera over many
+high-resolution frames, the same maths is reworked to run on a GPU: the Kerr
+geodesic equations and the backward ray tracer are rewritten as PyTorch tensor
+operations, so one device steps every pixel of a frame at once. It is a direct
+port, verified to match the C++ geodesics to a fraction of a degree, with two
+additions for the look: a background **starfield** that the hole lenses into arcs
+(each escaping ray samples a fixed sky texture by its final direction), and a
+camera that orbits the hole on a looping path.
+
+![Flythrough preview frame](figures/flythrough_preview.png)
+
+The notebook [`notebooks/flythrough_kaggle.ipynb`](notebooks/flythrough_kaggle.ipynb)
+runs this on a free Kaggle T4. Open it there, turn on the GPU accelerator, and
+run top to bottom; it writes `flythrough.mp4` and a lighter `flythrough.gif` to
+the working directory. The engine and the camera path live in
+[`viz/gpu_render.py`](viz/gpu_render.py) and
+[`viz/flythrough_driver.py`](viz/flythrough_driver.py), which the notebook embeds
+so it runs standalone; with a local CUDA GPU you can import them directly instead.
+
+Spin, inclination, field of view, resolution, and frame count are all knobs at
+the top of the render cell. The inner disk edge is still fixed rather than tracked
+to the spin-dependent ISCO; that refinement is tba.
