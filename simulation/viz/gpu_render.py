@@ -38,7 +38,7 @@ def kerr_terms(r, th, a, M):
     # tiny floor to avoid a literal divide-by-zero), because it is exactly the force
     # that turns a near-axis ray around; flooring it harder stops the turnaround and
     # lets the ray punch through the pole. The turnaround is instead resolved by
-    # shrinking the step near the axis (see render_frame), and any ray that still
+    # shrinking the step near the axis (see trace_step), and any ray that still
     # crosses the axis is reflected there.
     sin_safe = torch.clamp(s.abs(), min=1e-5)
     inv_s2 = 1.0 / (sin_safe * sin_safe)
@@ -132,7 +132,16 @@ def rk4(Y, h, a, M):
     return Y + (h / 6.0) * (k1 + 2.0 * k2 + 2.0 * k3 + k4)
 
 
-# --- disk shading, camera, starfield, and the frame renderer ----------------- #
+# --- disk physics, camera, starfield ---------------------------------------- #
+
+def isco_radius(a, M=1.0):
+    """Prograde innermost stable circular orbit (Bardeen, Press & Teukolsky 1972).
+    The disk's inner edge: inside it gas can no longer orbit and plunges in."""
+    a = a / M
+    z1 = 1 + (1 - a * a) ** (1 / 3) * ((1 + a) ** (1 / 3) + (1 - a) ** (1 / 3))
+    z2 = math.sqrt(3 * a * a + z1 * z1)
+    return M * (3 + z2 - math.sqrt((3 - z1) * (3 + z1 + 2 * z2)))
+
 
 def disk_redshift(r, p_t, p_ph, a, M=1.0):
     """g = nu_obs / nu_emit for the orbiting disk gas; mirrors disk_redshift()
@@ -199,18 +208,21 @@ def camera_rays(cam, device):
     return Y
 
 
-def make_starfield(n_stars=22000, th_res=1024, ph_res=2048, seed=7, device="cpu"):
+def make_starfield(n_stars=90000, th_res=2048, ph_res=4096, seed=7, device="cpu"):
     """A fixed lat-long sky of stars, sampled later by ray direction.
 
-    Each star is splatted a little wider than a pixel so it survives bilinear
+    Each star is splatted a little wider than a texel so it survives bilinear
     lookup and smears into an arc when the hole lenses that part of the sky.
+    Stars are spread uniformly over the sphere (not in theta), so the poles are
+    not crowded.
     """
     g = torch.Generator(device="cpu").manual_seed(seed)
     sky = torch.zeros(th_res, ph_res)
-    ti = torch.randint(1, th_res - 1, (n_stars,), generator=g)
+    th = torch.acos(1 - 2 * torch.rand(n_stars, generator=g))
+    ti = (th / math.pi * (th_res - 1)).long().clamp(1, th_res - 2)
     pj = torch.randint(0, ph_res, (n_stars,), generator=g)
-    mag = 0.35 + 0.65 * torch.rand(n_stars, generator=g) ** 3        # mostly faint, few bright
-    for dv, du, w in [(0, 0, 1.0), (1, 0, 0.4), (-1, 0, 0.4), (0, 1, 0.4), (0, -1, 0.4)]:
+    mag = 0.25 + 0.75 * torch.rand(n_stars, generator=g) ** 4        # mostly faint, few bright
+    for dv, du, w in [(0, 0, 1.0), (1, 0, 0.3), (-1, 0, 0.3), (0, 1, 0.3), (0, -1, 0.3)]:
         vi = (ti + dv).clamp(0, th_res - 1)
         ui = (pj + du) % ph_res
         sky.index_put_((vi, ui), mag * w, accumulate=True)
@@ -234,26 +246,26 @@ def sample_starfield(sky, th, ph):
             + sky[v1, u0] * (1 - fu) * fv + sky[v1, u1] * fu * fv)
 
 
-def inferno_lut(device):
-    import matplotlib
-    lut = matplotlib.colormaps["inferno"](torch.linspace(0, 1, 256).numpy())[:, :3]
-    return torch.tensor(lut, dtype=torch.float32, device=device)
+# --- tracing ----------------------------------------------------------------- #
 
-
-def trace_step(Y, active, otype, bright, dir_th, dir_ph, r_esc,
+def trace_step(Y, active, otype, hit_r, hit_ph, hit_g, sky_th, sky_ph, r_esc,
                a, M, C0, r_cap, r_in, r_out):
     """Advance every ray by one RK4 step and record any that finished.
 
     This is the whole per-step body (step size, RK4, pole reflection, horizon /
     disk / sky tests), written purely functionally so torch.compile can fuse it
     into a handful of GPU kernels instead of ~500 separate eager launches.
-    r_esc is a 0-d tensor (it changes every frame with the camera distance, and a
-    Python float would force a recompile per frame); the other scalars are fixed
-    for a whole clip.
+    r_esc is a 0-d tensor (it changes with the camera distance, and a Python
+    float would force a recompile); the other scalars are fixed for a whole clip.
+
+    For a ray that hits the disk we keep where it hit (r, phi) and its redshift g,
+    so the disk can be re-shaded for any moment of its rotation without tracing
+    again. For a ray that escapes we keep its asymptotic direction on the sky.
     """
     PI = math.pi
     r_before = Y[:, KR]
     th_before = Y[:, KTH]
+    ph_before = Y[:, KPHI]
     # Step size scales with radius (big far away, small near the hole) and
     # shrinks toward the spin axis in proportion to sin(theta), where the theta
     # motion turns around very sharply for near-axis rays. Without this the
@@ -284,19 +296,32 @@ def trace_step(Y, active, otype, bright, dir_th, dir_ph, r_esc,
     f1 = th - PI / 2.0
     frac = f0 / (f0 - f1)
     r_cross = r_before + frac * (r_now - r_before)
+    ph_cross = ph_before + frac * (ph - ph_before)
     on_disk = active & (f0 * f1 < 0) & (r_cross >= r_in) & (r_cross <= r_out)
     g = disk_redshift(r_cross, Y[:, KPT], Y[:, KPPH], a, M)
-    b = (r_in / torch.clamp(r_cross, min=1e-3)) ** 2 * g ** 4
-    bright = torch.where(on_disk, b, bright)
+    hit_r = torch.where(on_disk, r_cross, hit_r)
+    hit_ph = torch.where(on_disk, ph_cross, hit_ph)
+    hit_g = torch.where(on_disk, g, hit_g)
     otype = otype.masked_fill(on_disk, 2)
     active = active & ~on_disk
-    # escape to the sky
+    # Escape to the sky. Far from the hole space is nearly flat, so the ray's
+    # direction of travel is (dr, r dth, r sin th dph) in the local spherical
+    # frame; turned into Cartesian, that is where on the celestial sphere it looks.
     esc = active & (r_now > r_esc) & (Y[:, KPR] > 0)
-    dir_th = torch.where(esc, th, dir_th)
-    dir_ph = torch.where(esc, ph, dir_ph)
+    st, ct, sp, cp = torch.sin(th), torch.cos(th), torch.sin(ph), torch.cos(ph)
+    st_safe = st.abs().clamp(min=1e-5)
+    v_r = Y[:, KPR]
+    v_th = pth / r_now
+    v_ph = Yn[:, KPPH] / (r_now * st_safe)
+    vx = v_r * st * cp + v_th * ct * cp - v_ph * sp
+    vy = v_r * st * sp + v_th * ct * sp + v_ph * cp
+    vz = v_r * ct - v_th * st
+    vn = torch.sqrt(vx * vx + vy * vy + vz * vz).clamp(min=1e-12)
+    sky_th = torch.where(esc, torch.acos((vz / vn).clamp(-1.0, 1.0)), sky_th)
+    sky_ph = torch.where(esc, torch.atan2(vy, vx), sky_ph)
     otype = otype.masked_fill(esc, 3)
     active = active & ~esc
-    return Y, active, otype, bright, dir_th, dir_ph
+    return Y, active, otype, hit_r, hit_ph, hit_g, sky_th, sky_ph
 
 
 # torch.compile of trace_step, built lazily on first use. If compilation is not
@@ -331,13 +356,14 @@ def get_step_fn(use_compile=True):
     return safe_step
 
 
-def render_frame(cam, a, sky, lut, disk_scale, device, n_steps=900, C0=0.02,
-                 return_raw=False, use_compile=True, check_every=32,
-                 compact_below=0.85):
-    """Trace one frame and return an [H, W, 3] RGB tensor in [0, 1].
+def trace_frame(cam, a, device, n_steps=1500, C0=0.013, use_compile=True,
+                check_every=32, compact_below=0.85):
+    """Trace one ray per pixel and return what each ray hit (a dict of [P] tensors).
 
-    With return_raw=True, also return the raw disk-brightness tensor and the
-    per-ray outcome codes, used once to calibrate disk_scale for the whole clip.
+    otype: 0 never finished, 1 horizon, 2 disk, 3 sky. For disk rays hit_r,
+    hit_ph, hit_g give where the disk was hit and the redshift there; for sky rays
+    sky_th, sky_ph give the direction on the celestial sphere. Nothing here depends
+    on time, so a fixed camera needs this only once for a whole clip.
 
     use_compile fuses each integration step with torch.compile (falls back to
     eager automatically). Every check_every steps we sync once with the GPU to
@@ -354,25 +380,23 @@ def render_frame(cam, a, sky, lut, disk_scale, device, n_steps=900, C0=0.02,
 
     Y = camera_rays(cam, device)
     P = Y.shape[0]
-    # Per-pixel results for the whole frame; the working batch below is written
-    # back into these whenever it is compacted, and once at the end.
-    otype_all = torch.zeros(P, dtype=torch.int8, device=device)  # 0 fly 1 horizon 2 disk 3 sky
-    bright_all = torch.zeros(P, device=device)
-    dir_th_all = Y[:, KTH].clone()
-    dir_ph_all = Y[:, KPHI].clone()
-
-    idx = None                       # pixel index of each working ray (None = all)
+    names = ("otype", "hit_r", "hit_ph", "hit_g", "sky_th", "sky_ph")
+    # Per-pixel results for the whole frame; the working batch is written back
+    # into these whenever it is compacted, and once at the end.
+    out = dict(otype=torch.zeros(P, dtype=torch.int8, device=device),
+               hit_r=torch.zeros(P, device=device), hit_ph=torch.zeros(P, device=device),
+               hit_g=torch.zeros(P, device=device), sky_th=torch.zeros(P, device=device),
+               sky_ph=torch.zeros(P, device=device))
+    work = [out[n].clone() for n in names]
     active = torch.ones(P, dtype=torch.bool, device=device)
-    otype, bright = otype_all.clone(), bright_all.clone()
-    dir_th, dir_ph = dir_th_all.clone(), dir_ph_all.clone()
+    idx = None                       # pixel index of each working ray (None = all)
 
     def write_back():
-        if idx is None:
-            otype_all.copy_(otype); bright_all.copy_(bright)
-            dir_th_all.copy_(dir_th); dir_ph_all.copy_(dir_ph)
-        else:
-            otype_all[idx] = otype; bright_all[idx] = bright
-            dir_th_all[idx] = dir_th; dir_ph_all[idx] = dir_ph
+        for n, w in zip(names, work):
+            if idx is None:
+                out[n].copy_(w)
+            else:
+                out[n][idx] = w
 
     # Inside a step there is no GPU-to-CPU synchronisation at all; we only sync
     # every check_every steps to decide on compaction / early exit.
@@ -386,26 +410,138 @@ def render_frame(cam, a, sky, lut, disk_scale, device, n_steps=900, C0=0.02,
                 keep = active.nonzero().squeeze(1)
                 idx = keep if idx is None else idx[keep]
                 Y, active = Y[keep], active[keep]
-                otype, bright = otype[keep], bright[keep]
-                dir_th, dir_ph = dir_th[keep], dir_ph[keep]
-        Y, active, otype, bright, dir_th, dir_ph = step(
-            Y, active, otype, bright, dir_th, dir_ph, r_esc,
-            a, M, C0, r_cap, r_in, r_out)
+                work = [w[keep] for w in work]
+        Y, active, *work = step(Y, active, *work, r_esc, a, M, C0, r_cap, r_in, r_out)
     write_back()
+    out["res"] = cam["res"]
+    out["r_in"], out["r_out"], out["a"] = r_in, r_out, a
+    return out
 
-    # rays that never finished are still deep in the strong field: call them dark
-    # (they belong to the shadow / photon ring), not sky, to avoid stray specks.
-    H, W = cam["res"]
-    rgb = torch.zeros(P, 3, device=device)
-    sky_mask = otype_all == 3
-    star = sample_starfield(sky, dir_th_all, dir_ph_all)
-    star_rgb = star[:, None] * torch.tensor([0.9, 0.93, 1.0], device=device)  # cool white
-    rgb = torch.where(sky_mask[:, None], star_rgb, rgb)
-    # disk (inferno by normalized brightness)
-    disk_mask = otype_all == 2
-    idx_c = torch.clamp((bright_all / disk_scale) * 255, 0, 255).long()
-    rgb = torch.where(disk_mask[:, None], lut[idx_c], rgb)
-    frame = rgb.reshape(H, W, 3).clamp(0, 1)
-    if return_raw:
-        return frame, bright_all, otype_all
-    return frame
+
+# --- shading ----------------------------------------------------------------- #
+
+def fire_lut(device, n=256):
+    """Black -> ember red -> orange -> gold -> white-hot: a hot-gas palette."""
+    stops = torch.tensor([0.0, 0.12, 0.32, 0.55, 0.78, 1.0])
+    cols = torch.tensor([[0.00, 0.00, 0.00],
+                         [0.28, 0.03, 0.00],
+                         [0.78, 0.20, 0.02],
+                         [1.00, 0.52, 0.10],
+                         [1.00, 0.82, 0.45],
+                         [1.00, 0.98, 0.92]])
+    x = torch.linspace(0, 1, n)
+    j = torch.clamp(torch.searchsorted(stops, x, right=True) - 1, 0, len(stops) - 2)
+    w = ((x - stops[j]) / (stops[j + 1] - stops[j]))[:, None]
+    return (cols[j] * (1 - w) + cols[j + 1] * w).to(device)
+
+
+def disk_omega(r, a, M=1.0):
+    """Keplerian angular velocity of prograde circular orbits in Kerr."""
+    return math.sqrt(M) / (r ** 1.5 + a * math.sqrt(M))
+
+
+class DiskTexture:
+    """Turbulent, streaky gas pattern on the disk, as a sum of random waves in
+    (phi, log r). Waves are integer in phi so the pattern wraps around, and are
+    mostly tight in radius and loose in phi, so they read as orbiting streaks."""
+
+    def __init__(self, n_waves=40, seed=3, contrast=0.9, device="cpu"):
+        g = torch.Generator(device="cpu").manual_seed(seed)
+        self.m = torch.randint(1, 14, (n_waves,), generator=g).float().to(device)
+        self.k = (6 + 40 * torch.rand(n_waves, generator=g)).to(device)
+        self.phase = (2 * math.pi * torch.rand(n_waves, generator=g)).to(device)
+        amp = 1.0 / torch.sqrt(self.k.cpu() / 6.0 + self.m.cpu() / 3.0)
+        self.amp = (amp / amp.square().sum().sqrt()).to(device)
+        self.contrast = contrast
+
+    def __call__(self, r, ph):
+        u = torch.log(r)
+        arg = ph[:, None] * self.m + u[:, None] * self.k + self.phase
+        n = (torch.cos(arg) * self.amp).sum(-1)          # ~unit variance noise
+        return torch.exp(self.contrast * n - 0.5 * self.contrast ** 2)  # mean ~1
+
+
+def _gauss_blur(img, sigma):
+    """Separable Gaussian blur of an [H, W, C] image."""
+    import torch.nn.functional as F
+    rad = max(1, int(3 * sigma))
+    x = torch.arange(-rad, rad + 1, device=img.device, dtype=img.dtype)
+    k = torch.exp(-0.5 * (x / sigma) ** 2)
+    k = k / k.sum()
+    t = img.permute(2, 0, 1)[:, None]                    # [C, 1, H, W]
+    t = F.conv2d(F.pad(t, (rad, rad, 0, 0), mode="replicate"), k.view(1, 1, 1, -1))
+    t = F.conv2d(F.pad(t, (0, 0, rad, rad), mode="replicate"), k.view(1, 1, -1, 1))
+    return t[:, 0].permute(1, 2, 0)
+
+
+DEFAULT_LOOK = dict(
+    exposure=1.6,       # overall disk brightness (tone-mapping gain)
+    emis_pow=1.5,       # emissivity ~ (r_in / r)^emis_pow
+    beam_pow=3.0,       # Doppler + gravitational boost ~ g^beam_pow (4 = bolometric)
+    texture=0.9,        # contrast of the gas streaks (0 = smooth disk)
+    spin_turns=1.0,     # turns the inner edge makes per loop of the clip
+    bloom=0.6,          # strength of the glow around bright gas
+    stars=0.8,          # starfield brightness
+)
+
+
+def disk_intensity(tr, look, tex=None, t=0.0):
+    """Linear (HDR) disk brightness of every pixel at loop phase t in [0, 1).
+
+    The gas orbits differentially at the Keplerian rate, so the inner edge makes
+    look['spin_turns'] turns per loop and the outer disk lags far behind. To make
+    the clip loop seamlessly despite that, the pattern at phase t is a crossfade of
+    the pattern rotated forward by t loops and back by (1 - t) loops: both agree
+    at t = 0 and t = 1.
+    """
+    r = tr["hit_r"].clamp(min=1e-3)
+    r_in, r_out, a = tr["r_in"], tr["r_out"], tr["a"]
+    radial = (r_in / r) ** look["emis_pow"]
+    edge = torch.clamp((r_out - r) / (0.25 * r_out), 0, 1)   # soft outer edge
+    edge = edge * edge * (3 - 2 * edge)
+    I = radial * edge * tr["hit_g"].clamp(min=0) ** look["beam_pow"]
+    if tex is not None and look["texture"] > 0:
+        tex.contrast = look["texture"]
+        turn = 2 * math.pi * look["spin_turns"] * disk_omega(r, a) / disk_omega(r_in, a)
+        T1 = tex(r, tr["hit_ph"] - turn * t)
+        T0 = tex(r, tr["hit_ph"] - turn * (t - 1.0))
+        I = I * ((1 - t) * T1 + t * T0)
+    return torch.where(tr["otype"] == 2, I, torch.zeros_like(I))
+
+
+def disk_scale(tr, look):
+    """Brightness reference for tone mapping: a high percentile of the smooth
+    disk, so exposure means the same thing for every spin, angle and size."""
+    I = disk_intensity(tr, look)
+    I = I[tr["otype"] == 2]
+    return max(torch.quantile(I.float()[:2_000_000], 0.97).item(), 1e-6) if I.numel() else 1.0
+
+
+def shade(tr, sky, lut, scale, look=None, tex=None, t=0.0):
+    """Turn a traced frame into an [H, W, 3] RGB image in [0, 1] at loop phase t."""
+    look = dict(DEFAULT_LOOK, **(look or {}))
+    H, W = tr["res"]
+    device = tr["hit_r"].device
+    I = disk_intensity(tr, look, tex, t) / scale
+    v = 1.0 - torch.exp(-look["exposure"] * I)             # filmic roll-off, no clipping
+    rgb = lut[torch.clamp(v * (lut.shape[0] - 1), 0, lut.shape[0] - 1).long()]
+    rgb = rgb * (tr["otype"] == 2)[:, None]
+    star = sample_starfield(sky, tr["sky_th"], tr["sky_ph"]) * look["stars"]
+    star_rgb = star[:, None] * torch.tensor([0.9, 0.93, 1.0], device=device)
+    rgb = torch.where((tr["otype"] == 3)[:, None], star_rgb, rgb)
+    img = rgb.reshape(H, W, 3)
+    if look["bloom"] > 0:
+        hot = torch.clamp(img - 0.45, min=0)
+        glow = 0.6 * _gauss_blur(hot, 0.006 * W) + 0.4 * _gauss_blur(hot, 0.025 * W)
+        img = img + look["bloom"] * 2.0 * glow
+    return img.clamp(0, 1)
+
+
+def render_frame(cam, a, sky, device, look=None, t=0.0, n_steps=1500, C0=0.013,
+                 use_compile=True):
+    """Convenience: trace and shade a single frame; returns (image, trace)."""
+    look = dict(DEFAULT_LOOK, **(look or {}))
+    tr = trace_frame(cam, a, device, n_steps=n_steps, C0=C0, use_compile=use_compile)
+    lut = fire_lut(device)
+    tex = DiskTexture(device=device)
+    return shade(tr, sky, lut, disk_scale(tr, look), look, tex, t), tr
