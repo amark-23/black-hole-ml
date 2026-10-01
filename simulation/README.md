@@ -150,12 +150,12 @@ starts with $p_r < 0$, its size fixed by $p_r^2 = E^2 - V(r_0)$.
 
 A single such orbit, bent by gravity as it grazes the hole:
 
-![Deflected photon orbit](figures/orbit.png)
+![Deflected photon orbit](figures/orbit.gif)
 
 The black disk is the event horizon at $r = 2M$; the dashed ring is the photon
 sphere at $r = 3M$ (explained below).
 Regenerate with `bhsim photon 6 30 > orbit.csv` then
-`python simulation/viz/plot_orbit.py orbit.csv`.
+`python simulation/viz/animate_orbit.py orbit.csv simulation/figures/orbit.gif`.
 
 ### Circular orbits, the photon sphere, and the ISCO
 
@@ -174,11 +174,11 @@ effective potential $V(r)$. It is stable at a minimum and unstable at a maximum.
 
 Firing a whole beam of photons makes the capture threshold visible as a shadow:
 
-![Photon beam and the shadow](figures/fan.png)
+![Photon beam and the shadow](figures/fan.gif)
 
 Red rays (those with $|b| < 3\sqrt3\,M$) are captured and carve out the dark
 shadow; rays just outside the threshold whirl around the photon sphere; the rest
-bend away. Regenerate with `python simulation/viz/plot_fan.py`.
+bend away. Regenerate with `python simulation/viz/animate_fan.py`.
 
 A photon launched just above the threshold circles the photon sphere several
 times before escaping:
@@ -190,13 +190,13 @@ Regenerate with `bhsim photon 5.3 30 > whirl.csv` then
 
 A bound massive orbit does not close on itself the way a Newtonian ellipse does:
 
-![Precessing massive orbit](figures/rosette.png)
+![Precessing massive orbit](figures/rosette.gif)
 
 This is a bound particle ($E = 0.97$, $L = 4.0M$) oscillating between
 $r \approx 7.6M$ and $23M$. Its slow rotation is relativistic perihelion
 precession, the same effect first measured for Mercury. Regenerate with
 `bhsim massive 0.97 4.0 20 1500 > rosette.csv` then
-`python simulation/viz/plot_orbit.py rosette.csv simulation/figures/rosette.png`.
+`python simulation/viz/animate_orbit.py rosette.csv simulation/figures/rosette.gif`.
 
 ### What the tests check
 
@@ -323,9 +323,9 @@ capture region of a spinning one is pushed off-center: co-rotating (prograde)
 rays thread closer and escape, while counter-rotating ones are swept in from
 farther out.
 
-![Kerr shadow: a=0 versus a=0.9](figures/kerr_fan.png)
+![Kerr shadow: a=0 versus a=0.9](figures/kerr_fan.gif)
 
-Regenerate with `python simulation/viz/plot_kerr_fan.py`.
+Regenerate with `python simulation/viz/animate_kerr_fan.py`.
 
 Sweeping the spin from $a = 0$ up to $0.99$, the horizon shrinks
 ($r_+ = M + \sqrt{M^2 - a^2}$) and the capture region slides off-center as frame
