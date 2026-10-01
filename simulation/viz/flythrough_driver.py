@@ -32,7 +32,7 @@ def render_flythrough(cfg, device, out_mp4="flythrough.mp4", out_gif=None,
     # view, so brightness is stable across the whole clip (no flicker).
     cam0 = camera_at(0.0, cfg)
     _, bright, otype = G.render_frame(cam0, a, sky, lut, 1.0, device,
-                                      n_steps=cfg["n_steps"], return_raw=True)
+                                      n_steps=cfg["n_steps"], C0=cfg["C0"], return_raw=True)
     disk_b = bright[otype == 2]
     scale = torch.quantile(disk_b, 0.995).item() if disk_b.numel() else 1.0
     scale = max(scale, 1e-3)
@@ -42,7 +42,7 @@ def render_flythrough(cfg, device, out_mp4="flythrough.mp4", out_gif=None,
     n = cfg["n_frames"]
     for i in range(n):
         cam = camera_at(i / n, cfg)
-        f = G.render_frame(cam, a, sky, lut, scale, device, n_steps=cfg["n_steps"])
+        f = G.render_frame(cam, a, sky, lut, scale, device, n_steps=cfg["n_steps"], C0=cfg["C0"])
         frames.append((f.cpu().numpy() * 255).astype(np.uint8))
         if (i + 1) % max(1, n // 20) == 0 or i == n - 1:
             progress(f"frame {i + 1}/{n}")
@@ -58,5 +58,6 @@ def render_flythrough(cfg, device, out_mp4="flythrough.mp4", out_gif=None,
 
 DEFAULTS = dict(
     a=0.9, incl0=78.0, incl_sway=10.0, dist0=55.0, dolly=12.0, fov=22.0,
-    r_in=6.0, r_out=20.0, res=(576, 1024), n_frames=144, n_steps=1400, fps=30,
+    r_in=6.0, r_out=20.0, res=(576, 1024), n_frames=144, n_steps=1500, C0=0.013,
+    fps=30,
 )

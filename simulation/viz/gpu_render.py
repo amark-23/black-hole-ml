@@ -27,6 +27,12 @@ def kerr_terms(r, th, a, M):
     s2 = sin(th) ** 2
     c2 = cos(th) ** 2
     cs = cos(th) * sin(th)
+    # On the spin axis (theta = 0 or pi) Boyer-Lindquist coordinates are singular:
+    # the terms below carry 1/sin^2 and 1/sin^3 and would blow up. Floor sin here so
+    # a ray grazing the axis gets a bounded value instead of an explosive kick. The
+    # floor only bites within ~1 degree of the axis, so it changes nothing elsewhere.
+    sin_safe = torch.clamp(sin(th).abs(), min=2e-2)
+    s2_safe = sin_safe * sin_safe
     Sig = a * a * c2 + r * r                 # Sigma = r^2 + a^2 cos^2 th
     Del = -2.0 * M * r + a * a + r * r       # Delta = r^2 - 2Mr + a^2
     a2r2 = a * a + r * r
@@ -49,9 +55,9 @@ def kerr_terms(r, th, a, M):
         * 2.0
     )
     k["d_th_gtph"] = (M * a ** 3 * r * cs * -4.0 / Sig ** 2) / Del
-    k["gphph"] = -((1.0 / s2) * (M * r * 2.0 + a * a * s2 - a * a - r * r)) / (Sig * Del)
+    k["gphph"] = -((1.0 / s2_safe) * (M * r * 2.0 + a * a * s2 - a * a - r * r)) / (Sig * Del)
     k["d_r_gphph"] = (
-        (1.0 / s2) / Sig ** 2 / Del ** 2
+        (1.0 / s2_safe) / Sig ** 2 / Del ** 2
         * (
             M * r ** 4 * -4.0 + a ** 4 * r + r ** 5 + M * M * r ** 3 * 4.0
             + a * a * r ** 3 * 2.0 - a * a * r ** 3 * s2 * 2.0 - M * a * a * r * r * 4.0
@@ -61,7 +67,7 @@ def kerr_terms(r, th, a, M):
         * -2.0
     )
     k["d_th_gphph"] = (
-        (cos(th) / sin(th) ** 3 / Sig ** 2)
+        (cos(th) / sin_safe ** 3 / Sig ** 2)
         * (
             (a ** 4 * cos(th * 2.0)) / 2.0 - M * r ** 3 * 2.0
             + (a ** 4 * cos(th * 2.0) ** 2) / 4.0 + a ** 4 / 4.0 + r ** 4
@@ -247,7 +253,11 @@ def render_frame(cam, a, sky, lut, disk_scale, device, n_steps=900, C0=0.02,
             break  # only a few near-critical stragglers left; call them dark
         r_before = Y[:, KR].clone()
         th_before = Y[:, KTH].clone()
-        h = torch.clamp(C0 * Y[:, KR:KR + 1], max=0.6)
+        # Step size scales with radius (big far away, small near the hole) and also
+        # shrinks toward the spin axis, where the theta motion turns around sharply
+        # for near-axis rays; without this they overshoot and scatter into a streak.
+        sin_now = torch.sin(Y[:, KTH:KTH + 1]).abs()
+        h = torch.clamp(C0 * Y[:, KR:KR + 1] * (0.2 + 0.8 * sin_now), max=0.6)
         Yn = rk4(Y, h, a, M)
         Y = torch.where(active[:, None], Yn, Y)
 

@@ -150,7 +150,9 @@ starts with $p_r < 0$, its size fixed by $p_r^2 = E^2 - V(r_0)$.
 
 A single such orbit, bent by gravity as it grazes the hole:
 
-![Deflected photon orbit](figures/orbit.gif)
+<p align="center">
+  <img src="figures/orbit.gif" alt="Deflected photon orbit">
+</p>
 
 The black disk is the event horizon at $r = 2M$; the dashed ring is the photon
 sphere at $r = 3M$ (explained below).
@@ -174,7 +176,9 @@ effective potential $V(r)$. It is stable at a minimum and unstable at a maximum.
 
 Firing a whole beam of photons makes the capture threshold visible as a shadow:
 
-![Photon beam and the shadow](figures/fan.gif)
+<p align="center">
+  <img src="figures/fan.gif" alt="Photon beam and the shadow">
+</p>
 
 Red rays (those with $|b| < 3\sqrt3\,M$) are captured and carve out the dark
 shadow; rays just outside the threshold whirl around the photon sphere; the rest
@@ -183,14 +187,18 @@ bend away. Regenerate with `python simulation/viz/animate_fan.py`.
 A photon launched just above the threshold circles the photon sphere several
 times before escaping:
 
-![Photon whirl](figures/whirl.gif)
+<p align="center">
+  <img src="figures/whirl.gif" alt="Photon whirl">
+</p>
 
 Regenerate with `bhsim photon 5.3 30 > whirl.csv` then
 `python simulation/viz/animate_orbit.py whirl.csv`.
 
 A bound massive orbit does not close on itself the way a Newtonian ellipse does:
 
-![Precessing massive orbit](figures/rosette.gif)
+<p align="center">
+  <img src="figures/rosette.gif" alt="Precessing massive orbit">
+</p>
 
 This is a bound particle ($E = 0.97$, $L = 4.0M$) oscillating between
 $r \approx 7.6M$ and $23M$. Its slow rotation is relativistic perihelion
@@ -323,7 +331,9 @@ capture region of a spinning one is pushed off-center: co-rotating (prograde)
 rays thread closer and escape, while counter-rotating ones are swept in from
 farther out.
 
-![Kerr shadow: a=0 versus a=0.9](figures/kerr_fan.gif)
+<p align="center">
+  <img src="figures/kerr_fan.gif" alt="Kerr shadow: a=0 versus a=0.9">
+</p>
 
 Regenerate with `python simulation/viz/animate_kerr_fan.py`.
 
@@ -331,7 +341,9 @@ Sweeping the spin from $a = 0$ up to $0.99$, the horizon shrinks
 ($r_+ = M + \sqrt{M^2 - a^2}$) and the capture region slides off-center as frame
 dragging strengthens:
 
-![Kerr shadow morphing with spin](figures/kerr_spin.gif)
+<p align="center">
+  <img src="figures/kerr_spin.gif" alt="Kerr shadow morphing with spin">
+</p>
 
 Regenerate with `python simulation/viz/animate_kerr_spin.py`.
 
@@ -393,7 +405,9 @@ happens even at $a = 0$, since a Schwarzschild disk still orbits.
 
 ### What the image shows
 
-![Ray-traced Schwarzschild black hole with an accretion disk](figures/raytrace_schwarzschild.png)
+<p align="center">
+  <img src="figures/raytrace_schwarzschild.png" alt="Ray-traced Schwarzschild black hole with an accretion disk">
+</p>
 
 The flat band across the middle is the near side of the disk. The arc over the
 top is the *far* side: light leaving the disk behind the hole is bent up and over
@@ -407,13 +421,17 @@ other: that is the Doppler beaming above, the gas on that side orbiting toward u
 
 Turn on spin and the picture goes further lopsided:
 
-![Ray-traced Kerr black hole](figures/raytrace_kerr.png)
+<p align="center">
+  <img src="figures/raytrace_kerr.png" alt="Ray-traced Kerr black hole">
+</p>
 
 Frame dragging sweeps light around the direction of rotation, flattening one side
 of the shadow into the characteristic Kerr "D". Sweeping the spin up shows the
 shadow sliding and reshaping while the beamed side stays bright:
 
-![Ray-traced shadow morphing with spin](figures/raytrace_spin.gif)
+<p align="center">
+  <img src="figures/raytrace_spin.gif" alt="Ray-traced shadow morphing with spin">
+</p>
 
 ### Running it
 
@@ -449,7 +467,9 @@ additions for the look: a background **starfield** that the hole lenses into arc
 (each escaping ray samples a fixed sky texture by its final direction), and a
 camera that orbits the hole on a looping path.
 
-![Flythrough preview frame](figures/flythrough_preview.png)
+<p align="center">
+  <img src="figures/flythrough_preview.png" alt="Flythrough preview frame">
+</p>
 
 The notebook [`notebooks/flythrough_kaggle.ipynb`](notebooks/flythrough_kaggle.ipynb)
 runs this on a free Kaggle T4. Open it there, turn on the GPU accelerator, and
