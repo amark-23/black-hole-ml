@@ -3,7 +3,7 @@
 Simulating a black hole from scratch, and teaching neural networks to predict
 what it does.
 
-The project has two halves that mirror each other:
+The project has parts:
 
 - [`simulation/`](simulation) models the black hole itself: a C++ engine that
   traces light and matter around Schwarzschild (non-rotating) and Kerr (spinning)
