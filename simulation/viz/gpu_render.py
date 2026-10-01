@@ -373,10 +373,19 @@ def trace_frame(cam, a, device, n_steps=1500, C0=0.013, use_compile=True,
     only pay for rays that are still flying.
     """
     M = 1.0
-    r_cap = 1.01 * (M + math.sqrt(max(M * M - a * a, 0.0)))
-    r_in, r_out = float(cam["r_in"]), float(cam["r_out"])
+    a = float(a)
+    # a, r_cap, r_in and r_out are passed to the compiled step as 0-d tensors, for
+    # the same reason r_esc is: a Python float is baked into the compiled graph as a
+    # constant, so a NEW value forces a fresh torch.compile. They are constant across
+    # a single clip (fine as floats there), but a dataset sweeps a different hole
+    # every call, which would recompile on every one and never finish. As tensors the
+    # step compiles once and is reused for every hole.
+    r_cap = torch.tensor(1.01 * (M + math.sqrt(max(M * M - a * a, 0.0))), device=device)
+    r_in = torch.tensor(float(cam["r_in"]), device=device)
+    r_out = torch.tensor(float(cam["r_out"]), device=device)
     r_esc = torch.tensor(cam["dist"] * 1.4, device=device)
-    a, C0 = float(a), float(C0)
+    a = torch.tensor(a, device=device)
+    C0 = float(C0)
     step = get_step_fn(use_compile)
 
     Y = camera_rays(cam, device)

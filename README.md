@@ -55,6 +55,17 @@ A geodesic integrator built up from the simplest black hole to a spinning one:
   parameter, ISCO, weak-field deflection) and, for Kerr, against an independent
   MATLAB reference that it matches to about one part in $10^{11}$.
 
+## A gallery of black holes
+
+Eight Kerr black holes across spin and viewing inclination, each ray-traced on a
+GPU and labelled with its spin $a$, inclination, event horizon $r_+$, and ISCO. As
+the spin rises the horizon tightens and the inner disk edge (the ISCO) moves
+inward, from $6M$ at $a = 0$ to about $1.24M$ near the extremal limit.
+
+<p align="center">
+  <img src="simulation/figures/gallery.png" alt="Eight Kerr black holes across spin and inclination, with their main stats">
+</p>
+
 ## The machine learning
 
 Small models trained on data the simulator produces:
