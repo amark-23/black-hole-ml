@@ -9,6 +9,7 @@ shading, plus a gravitationally lensed starfield behind the hole.
 """
 
 import math
+import warnings
 
 import torch
 
@@ -19,14 +20,19 @@ KT, KR, KTH, KPHI, KPT, KPR, KPTH, KPPH = range(8)
 def kerr_terms(r, th, a, M):
     """Inverse-metric components and their r, theta derivatives, elementwise.
 
-    A direct transcription of include/kerr_generated.hpp: same expressions, with
-    torch ops in place of std::sin/cos/pow so they run on whole tensors at once.
+    A transcription of include/kerr_generated.hpp, with torch ops in place of
+    std::sin/cos/pow so they run on whole tensors at once. The expressions are the
+    generated ones, regrouped so shared pieces (sin/cos, 1/Sigma, 1/Delta, powers
+    of r) are computed once: in eager mode every distinct op is a separate GPU
+    kernel launch, so this alone roughly halves the kernels per RHS evaluation.
     Returns a dict of the 15 fields the RHS needs.
     """
-    sin, cos = torch.sin, torch.cos
-    s2 = sin(th) ** 2
-    c2 = cos(th) ** 2
-    cs = cos(th) * sin(th)
+    s = torch.sin(th)
+    c = torch.cos(th)
+    s2 = s * s
+    c2 = c * c
+    cs = c * s
+    c2th = c2 - s2                           # cos(2 th)
     # On the spin axis (theta = 0 or pi) Boyer-Lindquist coordinates are singular:
     # the terms below carry 1/sin^2 and 1/sin^3. We keep this barrier HONEST (only a
     # tiny floor to avoid a literal divide-by-zero), because it is exactly the force
@@ -34,59 +40,57 @@ def kerr_terms(r, th, a, M):
     # lets the ray punch through the pole. The turnaround is instead resolved by
     # shrinking the step near the axis (see render_frame), and any ray that still
     # crosses the axis is reflected there.
-    sin_safe = torch.clamp(sin(th).abs(), min=1e-5)
-    s2_safe = sin_safe * sin_safe
-    Sig = a * a * c2 + r * r                 # Sigma = r^2 + a^2 cos^2 th
-    Del = -2.0 * M * r + a * a + r * r       # Delta = r^2 - 2Mr + a^2
-    a2r2 = a * a + r * r
+    sin_safe = torch.clamp(s.abs(), min=1e-5)
+    inv_s2 = 1.0 / (sin_safe * sin_safe)
+
+    a2 = a * a
+    a4 = a2 * a2
+    r2 = r * r
+    r3 = r2 * r
+    r4 = r2 * r2
+    Sig = a2 * c2 + r2                       # Sigma = r^2 + a^2 cos^2 th
+    Del = r2 - 2.0 * M * r + a2              # Delta = r^2 - 2Mr + a^2
+    a2r2 = a2 + r2
+    iSig = 1.0 / Sig
+    iDel = 1.0 / Del
+    iSig2 = iSig * iSig
+    iSD = iSig * iDel
+    dDel = 2.0 * r - 2.0 * M                 # d Delta / dr
+    A = a2r2 * a2r2 - a2 * s2 * Del
 
     k = {}
-    k["gtt"] = -(a2r2 ** 2 - a * a * s2 * Del) / (Sig * Del)
-    k["d_r_gtt"] = (
-        -(r * a2r2 * 4.0 + a * a * s2 * (M * 2.0 - r * 2.0)) / (Sig * Del)
-        + (r * (a2r2 ** 2 - a * a * s2 * Del) * 2.0 / Sig ** 2) / Del
-        - ((a2r2 ** 2 - a * a * s2 * Del) * (M * 2.0 - r * 2.0) / Del ** 2) / Sig
-    )
-    k["d_th_gtt"] = (
-        (a * a * cs * 2.0) / Sig
-        - (a * a * cs * (a2r2 ** 2 - a * a * s2 * Del) * 2.0 / Sig ** 2) / Del
-    )
-    k["gtph"] = (-2.0 * M * a * r) / (Sig * Del)
-    k["d_r_gtph"] = (
-        M * a / Sig ** 2 / Del ** 2
-        * (-(a ** 4) * c2 - M * r ** 3 * 4.0 + r ** 4 * 3.0 + a * a * r * r + a * a * r * r * c2)
-        * 2.0
-    )
-    k["d_th_gtph"] = (M * a ** 3 * r * cs * -4.0 / Sig ** 2) / Del
-    k["gphph"] = -((1.0 / s2_safe) * (M * r * 2.0 + a * a * s2 - a * a - r * r)) / (Sig * Del)
+    k["gtt"] = -A * iSD
+    k["d_r_gtt"] = (-(4.0 * r * a2r2 - a2 * s2 * dDel) * iSD
+                    + 2.0 * r * A * iSig2 * iDel
+                    + A * dDel * iDel * iSD)
+    k["d_th_gtt"] = 2.0 * a2 * cs * iSig * (1.0 - A * iSD)
+    k["gtph"] = -2.0 * M * a * r * iSD
+    k["d_r_gtph"] = (2.0 * M * a * iSig2 * iDel * iDel
+                     * (-a4 * c2 - 4.0 * M * r3 + 3.0 * r4 + a2 * r2 * (1.0 + c2)))
+    k["d_th_gtph"] = -4.0 * M * a2 * a * r * cs * iSig2 * iDel
+    k["gphph"] = -inv_s2 * (2.0 * M * r + a2 * s2 - a2 - r2) * iSD
     k["d_r_gphph"] = (
-        (1.0 / s2_safe) / Sig ** 2 / Del ** 2
+        -2.0 * inv_s2 * iSig2 * iDel * iDel
         * (
-            M * r ** 4 * -4.0 + a ** 4 * r + r ** 5 + M * M * r ** 3 * 4.0
-            + a * a * r ** 3 * 2.0 - a * a * r ** 3 * s2 * 2.0 - M * a * a * r * r * 4.0
-            - a ** 4 * r * s2 - a ** 4 * r * c2 * s2 + M * a * a * r * r * s2 * 3.0
-            + M * a ** 4 * c2 * s2
+            -4.0 * M * r4 + a4 * r + r4 * r + 4.0 * M * M * r3
+            + 2.0 * a2 * r3 * (1.0 - s2) - 4.0 * M * a2 * r2
+            - a4 * r * s2 * (1.0 + c2) + 3.0 * M * a2 * r2 * s2
+            + M * a4 * c2 * s2
         )
-        * -2.0
     )
     k["d_th_gphph"] = (
-        (cos(th) / sin_safe ** 3 / Sig ** 2)
+        -2.0 * c * inv_s2 / sin_safe * iSig2 * iDel
         * (
-            (a ** 4 * cos(th * 2.0)) / 2.0 - M * r ** 3 * 2.0
-            + (a ** 4 * cos(th * 2.0) ** 2) / 4.0 + a ** 4 / 4.0 + r ** 4
-            + a * a * r * r + a * a * r * r * cos(th * 2.0) - M * a * a * r * cos(th * 2.0) * 2.0
+            0.5 * a4 * c2th - 2.0 * M * r3 + 0.25 * a4 * c2th * c2th + 0.25 * a4
+            + r4 + a2 * r2 * (1.0 + c2th) - 2.0 * M * a2 * r * c2th
         )
-        * -2.0
-    ) / Del
-    k["grr"] = Del / Sig
-    k["d_r_grr"] = (
-        1.0 / Sig ** 2
-        * (M * r * r - a * a * r - M * a * a * c2 + a * a * r * c2) * 2.0
     )
-    k["d_th_grr"] = a * a * cs / Sig ** 2 * Del * 2.0
-    k["gthth"] = 1.0 / Sig
-    k["d_r_gthth"] = r / Sig ** 2 * -2.0
-    k["d_th_gthth"] = a * a * cs / Sig ** 2 * 2.0
+    k["grr"] = Del * iSig
+    k["d_r_grr"] = 2.0 * iSig2 * (M * r2 - a2 * r - M * a2 * c2 + a2 * r * c2)
+    k["d_th_grr"] = 2.0 * a2 * cs * iSig2 * Del
+    k["gthth"] = iSig
+    k["d_r_gthth"] = -2.0 * r * iSig2
+    k["d_th_gthth"] = 2.0 * a2 * cs * iSig2
     return k
 
 
@@ -96,21 +100,27 @@ def kerr_rhs(Y, a, M):
     pt, pr, pth, pph = Y[:, KPT], Y[:, KPR], Y[:, KPTH], Y[:, KPPH]
     k = kerr_terms(r, th, a, M)
 
-    dY = torch.zeros_like(Y)
-    dY[:, KT] = k["gtt"] * pt + k["gtph"] * pph
-    dY[:, KR] = k["grr"] * pr
-    dY[:, KTH] = k["gthth"] * pth
-    dY[:, KPHI] = k["gtph"] * pt + k["gphph"] * pph
+    # Momentum products shared by both force terms.
+    ptpt, ptpph, pphpph = pt * pt, 2.0 * pt * pph, pph * pph
+    prpr, pthpth = pr * pr, pth * pth
 
     def quad(a_tt, a_tph, a_phph, a_rr, a_thth):
-        return (a_tt * pt * pt + 2.0 * a_tph * pt * pph + a_phph * pph * pph
-                + a_rr * pr * pr + a_thth * pth * pth)
+        return (a_tt * ptpt + a_tph * ptpph + a_phph * pphpph
+                + a_rr * prpr + a_thth * pthpth)
 
-    dY[:, KPR] = -0.5 * quad(k["d_r_gtt"], k["d_r_gtph"], k["d_r_gphph"],
-                             k["d_r_grr"], k["d_r_gthth"])
-    dY[:, KPTH] = -0.5 * quad(k["d_th_gtt"], k["d_th_gtph"], k["d_th_gphph"],
-                              k["d_th_grr"], k["d_th_gthth"])
-    return dY
+    zero = torch.zeros_like(r)               # dp_t = dp_phi = 0 (conserved)
+    return torch.stack([
+        k["gtt"] * pt + k["gtph"] * pph,
+        k["grr"] * pr,
+        k["gthth"] * pth,
+        k["gtph"] * pt + k["gphph"] * pph,
+        zero,
+        -0.5 * quad(k["d_r_gtt"], k["d_r_gtph"], k["d_r_gphph"],
+                    k["d_r_grr"], k["d_r_gthth"]),
+        -0.5 * quad(k["d_th_gtt"], k["d_th_gtph"], k["d_th_gphph"],
+                    k["d_th_grr"], k["d_th_gthth"]),
+        zero,
+    ], dim=1)
 
 
 def rk4(Y, h, a, M):
@@ -230,94 +240,172 @@ def inferno_lut(device):
     return torch.tensor(lut, dtype=torch.float32, device=device)
 
 
+def trace_step(Y, active, otype, bright, dir_th, dir_ph, r_esc,
+               a, M, C0, r_cap, r_in, r_out):
+    """Advance every ray by one RK4 step and record any that finished.
+
+    This is the whole per-step body (step size, RK4, pole reflection, horizon /
+    disk / sky tests), written purely functionally so torch.compile can fuse it
+    into a handful of GPU kernels instead of ~500 separate eager launches.
+    r_esc is a 0-d tensor (it changes every frame with the camera distance, and a
+    Python float would force a recompile per frame); the other scalars are fixed
+    for a whole clip.
+    """
+    PI = math.pi
+    r_before = Y[:, KR]
+    th_before = Y[:, KTH]
+    # Step size scales with radius (big far away, small near the hole) and
+    # shrinks toward the spin axis in proportion to sin(theta), where the theta
+    # motion turns around very sharply for near-axis rays. Without this the
+    # turnaround is overshot and those rays scatter into a vertical streak.
+    sin_now = torch.sin(th_before).abs().clamp(min=0.04)
+    h = torch.clamp(C0 * r_before * sin_now, max=0.6)[:, None]
+    Yn = torch.where(active[:, None], rk4(Y, h, a, M), Y)
+
+    # Pole crossing: if a ray steps past the spin axis (theta out of [0, pi]),
+    # reflect it back and advance phi by pi. This is the exact continuation of a
+    # geodesic through the axis, and keeps BL coordinates well defined.
+    th = Yn[:, KTH]
+    flip = active & ((th < 0.0) | (th > PI))
+    th_ref = torch.where(th < 0.0, -th, torch.where(th > PI, 2.0 * PI - th, th))
+    th = torch.where(flip, th_ref, th)
+    ph = torch.where(flip, Yn[:, KPHI] + PI, Yn[:, KPHI])
+    pth = torch.where(flip, -Yn[:, KPTH], Yn[:, KPTH])
+    r_now = Yn[:, KR]
+    Y = torch.stack([Yn[:, KT], r_now, th, ph, Yn[:, KPT], Yn[:, KPR], pth,
+                     Yn[:, KPPH]], dim=1)
+
+    # horizon
+    hit_h = active & (r_now <= r_cap)
+    otype = otype.masked_fill(hit_h, 1)
+    active = active & ~hit_h
+    # equatorial crossing into the disk annulus (computed for all rays, masked)
+    f0 = th_before - PI / 2.0
+    f1 = th - PI / 2.0
+    frac = f0 / (f0 - f1)
+    r_cross = r_before + frac * (r_now - r_before)
+    on_disk = active & (f0 * f1 < 0) & (r_cross >= r_in) & (r_cross <= r_out)
+    g = disk_redshift(r_cross, Y[:, KPT], Y[:, KPPH], a, M)
+    b = (r_in / torch.clamp(r_cross, min=1e-3)) ** 2 * g ** 4
+    bright = torch.where(on_disk, b, bright)
+    otype = otype.masked_fill(on_disk, 2)
+    active = active & ~on_disk
+    # escape to the sky
+    esc = active & (r_now > r_esc) & (Y[:, KPR] > 0)
+    dir_th = torch.where(esc, th, dir_th)
+    dir_ph = torch.where(esc, ph, dir_ph)
+    otype = otype.masked_fill(esc, 3)
+    active = active & ~esc
+    return Y, active, otype, bright, dir_th, dir_ph
+
+
+# torch.compile of trace_step, built lazily on first use. If compilation is not
+# available (old torch, no compiler toolchain, unsupported GPU) or fails at run
+# time, we fall back to the eager function once, with a warning, and stay there.
+_STEP = {"fn": None, "compiled": False}
+
+
+def get_step_fn(use_compile=True):
+    if not use_compile:
+        return trace_step
+    if _STEP["fn"] is None:
+        _STEP["fn"], _STEP["compiled"] = trace_step, False
+        if hasattr(torch, "compile"):
+            try:
+                # dynamic=True: the ray count shrinks as rays are compacted, and
+                # we do not want a recompile for every new batch size.
+                _STEP["fn"] = torch.compile(trace_step, dynamic=True)
+                _STEP["compiled"] = True
+            except Exception as e:  # pragma: no cover - depends on the platform
+                warnings.warn(f"torch.compile unavailable ({e!r}); using eager mode")
+    if not _STEP["compiled"]:
+        return trace_step
+
+    def safe_step(*args):
+        try:
+            return _STEP["fn"](*args)
+        except Exception as e:  # pragma: no cover - depends on the platform
+            warnings.warn(f"compiled step failed ({e!r}); falling back to eager mode")
+            _STEP["fn"], _STEP["compiled"] = trace_step, False
+            return trace_step(*args)
+    return safe_step
+
+
 def render_frame(cam, a, sky, lut, disk_scale, device, n_steps=900, C0=0.02,
-                 return_raw=False):
+                 return_raw=False, use_compile=True, check_every=32,
+                 compact_below=0.85):
     """Trace one frame and return an [H, W, 3] RGB tensor in [0, 1].
 
     With return_raw=True, also return the raw disk-brightness tensor and the
     per-ray outcome codes, used once to calibrate disk_scale for the whole clip.
+
+    use_compile fuses each integration step with torch.compile (falls back to
+    eager automatically). Every check_every steps we sync once with the GPU to
+    count the rays still in flight; if fewer than compact_below of the current
+    batch remain, the finished rays are dropped from the batch, so later steps
+    only pay for rays that are still flying.
     """
     M = 1.0
     r_cap = 1.01 * (M + math.sqrt(max(M * M - a * a, 0.0)))
-    r_esc = cam["dist"] * 1.4
-    r_in, r_out = cam["r_in"], cam["r_out"]
-    PI = math.pi
+    r_in, r_out = float(cam["r_in"]), float(cam["r_out"])
+    r_esc = torch.tensor(cam["dist"] * 1.4, device=device)
+    a, C0 = float(a), float(C0)
+    step = get_step_fn(use_compile)
 
     Y = camera_rays(cam, device)
     P = Y.shape[0]
+    # Per-pixel results for the whole frame; the working batch below is written
+    # back into these whenever it is compacted, and once at the end.
+    otype_all = torch.zeros(P, dtype=torch.int8, device=device)  # 0 fly 1 horizon 2 disk 3 sky
+    bright_all = torch.zeros(P, device=device)
+    dir_th_all = Y[:, KTH].clone()
+    dir_ph_all = Y[:, KPHI].clone()
+
+    idx = None                       # pixel index of each working ray (None = all)
     active = torch.ones(P, dtype=torch.bool, device=device)
-    otype = torch.zeros(P, dtype=torch.int8, device=device)   # 0 fly 1 horizon 2 disk 3 sky
-    bright = torch.zeros(P, device=device)
-    dir_th = Y[:, KTH].clone()
-    dir_ph = Y[:, KPHI].clone()
+    otype, bright = otype_all.clone(), bright_all.clone()
+    dir_th, dir_ph = dir_th_all.clone(), dir_ph_all.clone()
 
-    for _ in range(n_steps):
-        if int(active.sum()) <= max(1, P // 2000):
-            break  # only a few near-critical stragglers left; call them dark
-        r_before = Y[:, KR].clone()
-        th_before = Y[:, KTH].clone()
-        # Step size scales with radius (big far away, small near the hole) and
-        # shrinks toward the spin axis in proportion to sin(theta), where the theta
-        # motion turns around very sharply for near-axis rays. Without this the
-        # turnaround is overshot and those rays scatter into a vertical streak.
-        sin_now = torch.sin(Y[:, KTH:KTH + 1]).abs().clamp(min=0.04)
-        h = torch.clamp(C0 * Y[:, KR:KR + 1] * sin_now, max=0.6)
-        Yn = rk4(Y, h, a, M)
-        Y = torch.where(active[:, None], Yn, Y)
+    def write_back():
+        if idx is None:
+            otype_all.copy_(otype); bright_all.copy_(bright)
+            dir_th_all.copy_(dir_th); dir_ph_all.copy_(dir_ph)
+        else:
+            otype_all[idx] = otype; bright_all[idx] = bright
+            dir_th_all[idx] = dir_th; dir_ph_all[idx] = dir_ph
 
-        # Pole crossing: if a ray steps past the spin axis (theta out of [0, pi]),
-        # reflect it back and advance phi by pi. This is the exact continuation of a
-        # geodesic through the axis, and keeps BL coordinates well defined.
-        th = Y[:, KTH]
-        below = active & (th < 0.0)
-        above = active & (th > PI)
-        Y[below, KTH] = -th[below]
-        Y[above, KTH] = 2.0 * PI - th[above]
-        flip = below | above
-        Y[flip, KPHI] = Y[flip, KPHI] + PI
-        Y[flip, KPTH] = -Y[flip, KPTH]
-
-        r_now = Y[:, KR]
-        # horizon
-        hit_h = active & (r_now <= r_cap)
-        otype[hit_h] = 1
-        active[hit_h] = False
-        # equatorial crossing into the disk annulus
-        f0 = th_before - PI / 2.0
-        f1 = Y[:, KTH] - PI / 2.0
-        crossed = active & (f0 * f1 < 0)
-        if bool(crossed.any()):
-            frac = f0 / (f0 - f1)
-            r_cross = r_before + frac * (r_now - r_before)
-            on_disk = crossed & (r_cross >= r_in) & (r_cross <= r_out)
-            if bool(on_disk.any()):
-                g = disk_redshift(r_cross, Y[:, KPT], Y[:, KPPH], a, M)
-                emis = (r_in / torch.clamp(r_cross, min=1e-3)) ** 2
-                b = emis * g ** 4
-                bright = torch.where(on_disk, b, bright)
-                otype[on_disk] = 2
-                active[on_disk] = False
-        # escape to the sky
-        esc = active & (r_now > r_esc) & (Y[:, KPR] > 0)
-        if bool(esc.any()):
-            dir_th = torch.where(esc, Y[:, KTH], dir_th)
-            dir_ph = torch.where(esc, Y[:, KPHI], dir_ph)
-            otype[esc] = 3
-            active[esc] = False
+    # Inside a step there is no GPU-to-CPU synchronisation at all; we only sync
+    # every check_every steps to decide on compaction / early exit.
+    for i in range(n_steps):
+        if i > 0 and i % check_every == 0:
+            n_active = int(active.sum())
+            if n_active <= max(1, P // 2000):
+                break  # only a few near-critical stragglers left; call them dark
+            if n_active < compact_below * active.shape[0]:
+                write_back()
+                keep = active.nonzero().squeeze(1)
+                idx = keep if idx is None else idx[keep]
+                Y, active = Y[keep], active[keep]
+                otype, bright = otype[keep], bright[keep]
+                dir_th, dir_ph = dir_th[keep], dir_ph[keep]
+        Y, active, otype, bright, dir_th, dir_ph = step(
+            Y, active, otype, bright, dir_th, dir_ph, r_esc,
+            a, M, C0, r_cap, r_in, r_out)
+    write_back()
 
     # rays that never finished are still deep in the strong field: call them dark
     # (they belong to the shadow / photon ring), not sky, to avoid stray specks.
     H, W = cam["res"]
     rgb = torch.zeros(P, 3, device=device)
-    sky_mask = otype == 3
-    star = sample_starfield(sky, dir_th, dir_ph)
+    sky_mask = otype_all == 3
+    star = sample_starfield(sky, dir_th_all, dir_ph_all)
     star_rgb = star[:, None] * torch.tensor([0.9, 0.93, 1.0], device=device)  # cool white
     rgb = torch.where(sky_mask[:, None], star_rgb, rgb)
     # disk (inferno by normalized brightness)
-    disk_mask = otype == 2
-    idx = torch.clamp((bright / disk_scale) * 255, 0, 255).long()
-    rgb = torch.where(disk_mask[:, None], lut[idx], rgb)
+    disk_mask = otype_all == 2
+    idx_c = torch.clamp((bright_all / disk_scale) * 255, 0, 255).long()
+    rgb = torch.where(disk_mask[:, None], lut[idx_c], rgb)
     frame = rgb.reshape(H, W, 3).clamp(0, 1)
     if return_raw:
-        return frame, bright, otype
+        return frame, bright_all, otype_all
     return frame
