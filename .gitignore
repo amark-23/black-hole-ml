@@ -26,3 +26,6 @@ checkpoints/
 .DS_Store
 .vscode/
 .idea/
+
+# generated trajectory CSVs at the repo root (fixtures under tests/ stay tracked)
+/*.csv
