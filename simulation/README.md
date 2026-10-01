@@ -426,8 +426,11 @@ Turn on spin and the picture goes further lopsided:
 </p>
 
 Frame dragging sweeps light around the direction of rotation, flattening one side
-of the shadow into the characteristic Kerr "D". Sweeping the spin up shows the
-shadow sliding and reshaping while the beamed side stays bright:
+of the shadow into the characteristic Kerr "D". Spin also lets gas orbit stably
+much closer in, so the disk's inner edge (the ISCO) moves from $6M$ at $a = 0$ to
+about $2.3M$ at $a = 0.9$, filling the gap between disk and shadow. Sweeping the
+spin up shows the shadow sliding and reshaping while the disk creeps inward and
+the beamed side stays bright:
 
 <p align="center">
   <img src="figures/raytrace_spin.gif" alt="Ray-traced shadow morphing with spin">
@@ -453,32 +456,51 @@ python simulation/viz/render_image.py --sweep    # writes the spin gif
 On Windows, pass the executable path if it is not found automatically, for
 example `python simulation/viz/render_image.py .\simulation\build\Release\bhsim.exe`.
 
-The disk here is a flat glowing annulus with an $r^{-2}$ emissivity, shaded by the
-full relativistic $g^4$ factor above.
+The disk here is a flat glowing annulus from the spin's ISCO out to $20M$, with
+an $r^{-2}$ emissivity, shaded by the full relativistic $g^4$ factor above. The
+beamed inner edge is orders of magnitude brighter than the rest, so the viewer
+tone-maps the brightness (a smooth roll-off rather than a linear scale) to keep
+the dim side visible.
 
-### Cinematic flythrough (GPU)
+Rays that pass directly over the spin axis (the image's centre column) need one
+extra step: Boyer-Lindquist coordinates are singular on the axis, and a ray that
+flies over it comes out with $\theta < 0$. The tracer maps it back onto the same
+point of space ($\theta \to -\theta$, $\phi \to \phi + \pi$, $p_\theta \to -p_\theta$),
+the exact continuation of the geodesic, so those pixels still find the disk.
 
-The C++ renderer above draws one image on the CPU. For a moving camera over many
-high-resolution frames, the same maths is reworked to run on a GPU: the Kerr
-geodesic equations and the backward ray tracer are rewritten as PyTorch tensor
-operations, so one device steps every pixel of a frame at once. It is a direct
-port, verified to match the C++ geodesics to a fraction of a degree, with two
-additions for the look: a background **starfield** that the hole lenses into arcs
-(each escaping ray samples a fixed sky texture by its final direction), and a
-camera that orbits the hole on a looping path.
+### Spinning black hole clip (GPU)
+
+The C++ renderer above draws one image on the CPU. For high-resolution animated
+clips, the same maths is reworked to run on a GPU: the Kerr geodesic equations
+and the backward ray tracer are rewritten as PyTorch tensor operations, so one
+device steps every pixel of a frame at once. It is a direct port, verified to
+match the C++ geodesics to a fraction of a degree, with additions for the look:
+
+- the disk's inner edge sits at the spin-dependent ISCO, and its gas carries a
+  streaky texture that orbits at the Keplerian rate (inner edge fastest), so the
+  clip shows the disk spinning and loops seamlessly;
+- the disk is tone-mapped through a hot-gas palette with a bloom glow, keeping the
+  physical Doppler + gravitational contrast (approaching side white-hot,
+  receding side deep red);
+- a background **starfield** that the hole lenses into arcs (each escaping ray
+  samples a fixed sky texture by its asymptotic direction).
+
+With a still camera only the gas moves, which does not change where the light
+goes, so the rays are traced once and every frame is re-shaded: a whole loop
+costs about one frame of ray tracing. The camera can optionally orbit the hole.
 
 <p align="center">
-  <img src="figures/flythrough_preview.png" alt="Flythrough preview frame">
+  <img src="figures/flythrough_preview.png" alt="Spinning black hole preview frame">
 </p>
 
 The notebook [`notebooks/flythrough_kaggle.ipynb`](notebooks/flythrough_kaggle.ipynb)
 runs this on a free Kaggle T4. Open it there, turn on the GPU accelerator, and
-run top to bottom; it writes `flythrough.mp4` and a lighter `flythrough.gif` to
-the working directory. The engine and the camera path live in
+run top to bottom; it writes `black_hole.mp4` and a lighter `black_hole.gif` to
+the working directory. The engine and the camera setup live in
 [`viz/gpu_render.py`](viz/gpu_render.py) and
 [`viz/flythrough_driver.py`](viz/flythrough_driver.py), which the notebook embeds
 so it runs standalone; with a local CUDA GPU you can import them directly instead.
 
-Spin, inclination, field of view, resolution, and frame count are all knobs at
-the top of the render cell. The inner disk edge is still fixed rather than tracked
-to the spin-dependent ISCO; that refinement is tba.
+Spin, inclination, distance, field of view, resolution, and frame count are knobs
+in the preview cell; brightness, Doppler contrast, streaks, and glow are knobs in
+the look cell, which re-shades instantly without tracing again.

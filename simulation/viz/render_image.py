@@ -47,16 +47,19 @@ def render(exe: str, a: float, res: int) -> np.ndarray:
     return np.array([[float(v) for v in row.split()] for row in lines[1:]])
 
 
-def colorize(img: np.ndarray) -> np.ndarray:
+def colorize(img: np.ndarray, exposure: float = 1.6) -> np.ndarray:
     """Map brightness to 8-bit RGB with the chosen colormap.
 
-    Doppler beaming gives the approaching side a huge brightness spike, so a few
-    pixels would otherwise wash out everything else. Normalising to a high
-    percentile (not the raw maximum) keeps the dim receding side visible.
+    Doppler beaming gives the approaching inner edge a brightness spike orders of
+    magnitude above the rest of the disk, so a linear scale would leave
+    everything but that spike black. We tone-map instead: normalise to a high
+    percentile, then roll off as 1 - exp(-exposure * x), which keeps the dim
+    receding side and the outer disk visible without clipping the bright side.
     """
     lit = img[img > 0]
-    hi = np.percentile(lit, 99.5) if lit.size else 1.0
-    rgba = matplotlib.colormaps[CMAP](np.clip(img / hi, 0.0, 1.0))
+    ref = np.percentile(lit, 97) if lit.size else 1.0
+    v = 1.0 - np.exp(-exposure * img / ref)
+    rgba = matplotlib.colormaps[CMAP](np.clip(v, 0.0, 1.0))
     return (rgba[..., :3] * 255).astype(np.uint8)
 
 

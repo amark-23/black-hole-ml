@@ -4,7 +4,6 @@ project(bhsim LANGUAGES CXX)
 # ---------------------------------------------------------------------------
 # Options
 # ---------------------------------------------------------------------------
-option(BHSIM_ENABLE_CUDA "Build the CUDA ray tracer"        OFF)
 option(BHSIM_BUILD_TESTS "Build the C++ tests"             ON)
 option(BHSIM_PYTHON      "Build the pybind11 Python module" OFF)
 
@@ -52,16 +51,6 @@ target_link_libraries(bhsim_core PUBLIC OpenMP::OpenMP_CXX)
 # ---------------------------------------------------------------------------
 add_executable(bhsim src/main.cpp)
 target_link_libraries(bhsim PRIVATE bhsim_core)
-
-# ---------------------------------------------------------------------------
-# Optional CUDA ray tracer (off by default so CPU-only machines still build)
-# ---------------------------------------------------------------------------
-if(BHSIM_ENABLE_CUDA)
-  enable_language(CUDA)
-  add_executable(bhsim_raytrace cuda/raytrace.cu)
-  target_include_directories(bhsim_raytrace PRIVATE include)
-  set_target_properties(bhsim_raytrace PROPERTIES CUDA_STANDARD 17)
-endif()
 
 # ---------------------------------------------------------------------------
 # Optional Python bindings (pybind11). Off by default; enable with
