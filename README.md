@@ -14,11 +14,12 @@ The project has 2 parts:
   light bending hundreds of times faster than integrating it.
 
 <p align="center">
-  <img src="simulation/figures/kerr_spin.gif" alt="Black-hole shadow morphing with spin">
+  <img src="simulation/figures/black_hole_spin.gif" alt="Ray-traced spinning black hole with its accretion disk">
 </p>
 
-*As a black hole spins faster, frame dragging pulls its shadow off-center. A
-richer three-dimensional render is tba.*
+*A spinning (Kerr) black hole, ray-traced on a GPU: the far side of the disk is
+lensed up over the shadow, and the gas turning toward us is Doppler-boosted
+white-hot. See the [GPU clip notebook](simulation/notebooks/flythrough_kaggle.ipynb).*
 
 ## Quick install
 

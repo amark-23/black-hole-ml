@@ -18,7 +18,6 @@ import time
 import gpu_render as G
 import imageio.v2 as imageio
 import numpy as np
-import torch
 
 
 def camera_at(t, cfg):

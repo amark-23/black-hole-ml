@@ -499,22 +499,22 @@ def disk_intensity(tr, look, tex=None, t=0.0):
     radial = (r_in / r) ** look["emis_pow"]
     edge = torch.clamp((r_out - r) / (0.25 * r_out), 0, 1)   # soft outer edge
     edge = edge * edge * (3 - 2 * edge)
-    I = radial * edge * tr["hit_g"].clamp(min=0) ** look["beam_pow"]
+    lum = radial * edge * tr["hit_g"].clamp(min=0) ** look["beam_pow"]
     if tex is not None and look["texture"] > 0:
         tex.contrast = look["texture"]
         turn = 2 * math.pi * look["spin_turns"] * disk_omega(r, a) / disk_omega(r_in, a)
         T1 = tex(r, tr["hit_ph"] - turn * t)
         T0 = tex(r, tr["hit_ph"] - turn * (t - 1.0))
-        I = I * ((1 - t) * T1 + t * T0)
-    return torch.where(tr["otype"] == 2, I, torch.zeros_like(I))
+        lum = lum * ((1 - t) * T1 + t * T0)
+    return torch.where(tr["otype"] == 2, lum, torch.zeros_like(lum))
 
 
 def disk_scale(tr, look):
     """Brightness reference for tone mapping: a high percentile of the smooth
     disk, so exposure means the same thing for every spin, angle and size."""
-    I = disk_intensity(tr, look)
-    I = I[tr["otype"] == 2]
-    return max(torch.quantile(I.float()[:2_000_000], 0.97).item(), 1e-6) if I.numel() else 1.0
+    lum = disk_intensity(tr, look)
+    lum = lum[tr["otype"] == 2]
+    return max(torch.quantile(lum.float()[:2_000_000], 0.97).item(), 1e-6) if lum.numel() else 1.0
 
 
 def shade(tr, sky, lut, scale, look=None, tex=None, t=0.0):
@@ -522,8 +522,8 @@ def shade(tr, sky, lut, scale, look=None, tex=None, t=0.0):
     look = dict(DEFAULT_LOOK, **(look or {}))
     H, W = tr["res"]
     device = tr["hit_r"].device
-    I = disk_intensity(tr, look, tex, t) / scale
-    v = 1.0 - torch.exp(-look["exposure"] * I)             # filmic roll-off, no clipping
+    lum = disk_intensity(tr, look, tex, t) / scale
+    v = 1.0 - torch.exp(-look["exposure"] * lum)           # filmic roll-off, no clipping
     rgb = lut[torch.clamp(v * (lut.shape[0] - 1), 0, lut.shape[0] - 1).long()]
     rgb = rgb * (tr["otype"] == 2)[:, None]
     star = sample_starfield(sky, tr["sky_th"], tr["sky_ph"]) * look["stars"]
