@@ -85,6 +85,6 @@ def render_clip(cfg, device, out_mp4="black_hole.mp4", out_gif="black_hole.gif",
 # spin_turns (in look): how many turns the inner edge makes per loop.
 DEFAULTS = dict(
     a=0.9, incl=84.0, az=0.0, dist=40.0, fov=30.0, r_in=None, r_out=18.0,
-    res=(720, 1280), n_frames=96, fps=24, orbit_turns=0, n_steps=1500, C0=0.013,
+    res=(720, 1280), n_frames=96, fps=24, orbit_turns=0, n_steps=6000, C0=0.013,
     use_compile=True, gif_width=640, look={},
 )

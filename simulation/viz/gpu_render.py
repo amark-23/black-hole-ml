@@ -272,8 +272,22 @@ def trace_step(Y, active, otype, hit_r, hit_ph, hit_g, sky_th, sky_ph, r_esc,
     # motion turns around very sharply for near-axis rays. Without this the
     # turnaround is overshot and those rays scatter into a vertical streak.
     sin_now = torch.sin(th_before).abs().clamp(min=0.04)
-    h = torch.clamp(C0 * r_before * sin_now, max=0.6)[:, None]
-    Yn = torch.where(active[:, None], rk4(Y, h, a, M), Y)
+    h = torch.clamp(C0 * r_before * sin_now, max=0.6)
+    # Near the horizon Delta -> 0 and the inverse metric's 1/Delta terms blow up. A
+    # step sized only by r lets the last step into the hole put its RK4 stages at or
+    # past the horizon, and those rays come back NaN or get flung out to the disk or
+    # sky (stray dots inside the shadow). So also cap the step to move a ray at most
+    # a tenth of its remaining distance to r_+ at its current radial speed.
+    a_t = torch.as_tensor(a, dtype=Y.dtype, device=Y.device)
+    r_plus = M + torch.sqrt(torch.clamp(M * M - a_t * a_t, min=0.0))
+    delta = r_before * r_before - 2.0 * M * r_before + a_t * a_t
+    sigma = r_before * r_before + a_t * a_t * torch.cos(th_before) ** 2
+    r_dot = delta / sigma * Y[:, KPR]
+    h = torch.minimum(h, 0.1 * torch.clamp(r_before - r_plus, min=0.0) / (r_dot.abs() + 1e-12))
+    Yn = torch.where(active[:, None], rk4(Y, h[:, None], a, M), Y)
+    # Anything still non-finite can only come from those singular terms: count it as
+    # captured, rather than leaving it "in flight" (and active) for the whole trace.
+    blown = active & ~torch.isfinite(Yn).all(dim=1)
 
     # Pole crossing: if a ray steps past the spin axis (theta out of [0, pi]),
     # reflect it back and advance phi by pi. This is the exact continuation of a
@@ -289,7 +303,7 @@ def trace_step(Y, active, otype, hit_r, hit_ph, hit_g, sky_th, sky_ph, r_esc,
                      Yn[:, KPPH]], dim=1)
 
     # horizon
-    hit_h = active & (r_now <= r_cap)
+    hit_h = active & ((r_now <= r_cap) | blown)
     otype = otype.masked_fill(hit_h, 1)
     active = active & ~hit_h
     # equatorial crossing into the disk annulus (computed for all rays, masked)
@@ -357,7 +371,7 @@ def get_step_fn(use_compile=True):
     return safe_step
 
 
-def trace_frame(cam, a, device, n_steps=1500, C0=0.013, use_compile=True,
+def trace_frame(cam, a, device, n_steps=6000, C0=0.013, use_compile=True,
                 check_every=32, compact_below=0.85):
     """Trace one ray per pixel and return what each ray hit (a dict of [P] tensors).
 
@@ -371,6 +385,11 @@ def trace_frame(cam, a, device, n_steps=1500, C0=0.013, use_compile=True,
     count the rays still in flight; if fewer than compact_below of the current
     batch remain, the finished rays are dropped from the batch, so later steps
     only pay for rays that are still flying.
+
+    n_steps is only a cap: the trace stops once all but a handful of rays have
+    finished, so most frames never reach it. Rays that leave close to the spin
+    axis take the longest (their steps shrink with sin(theta)), up to a few
+    thousand steps in near face-on views; a lower cap leaves them unfinished.
     """
     M = 1.0
     a = float(a)
@@ -547,7 +566,7 @@ def shade(tr, sky, lut, scale, look=None, tex=None, t=0.0):
     return img.clamp(0, 1)
 
 
-def render_frame(cam, a, sky, device, look=None, t=0.0, n_steps=1500, C0=0.013,
+def render_frame(cam, a, sky, device, look=None, t=0.0, n_steps=6000, C0=0.013,
                  use_compile=True):
     """Convenience: trace and shade a single frame; returns (image, trace)."""
     look = dict(DEFAULT_LOOK, **(look or {}))

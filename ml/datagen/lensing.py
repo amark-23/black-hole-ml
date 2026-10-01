@@ -64,7 +64,7 @@ def assign_splits(n, seed):
     return split
 
 
-def trace_batch(holes, res, r_out, device, n_steps=1500, C0=0.013, use_compile=True,
+def trace_batch(holes, res, r_out, device, n_steps=6000, C0=0.013, use_compile=True,
                 check_every=32, compact_below=0.85):
     """Trace several black holes at once and return the per-ray fields for the whole
     batch (one long [B*res*res] tensor per field, holes laid out back to back).
@@ -130,7 +130,7 @@ def trace_batch(holes, res, r_out, device, n_steps=1500, C0=0.013, use_compile=T
 
 
 def generate(out_dir, n=2000, res=128, r_out=18.0, seed=0, shard=250, batch=None,
-             device=None, n_steps=1500, C0=0.013, use_compile=True, progress=print):
+             device=None, n_steps=6000, C0=0.013, use_compile=True, progress=print):
     """Trace n black holes (in GPU-saturating batches) and write npz shards plus a
     manifest to out_dir. `batch` is how many holes share one GPU call; the default
     aims for about a million rays per call."""

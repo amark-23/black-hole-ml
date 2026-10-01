@@ -118,7 +118,8 @@ dimmed.
 
 *One sample ($a = 0.63$, inclination $83°$): the outcome of every pixel's ray, the
 disk radius it hit, and the observed image formed by pushing a sample emission
-profile through that geometry.*
+profile through that geometry, with its $g^4$ shift (the approaching side, on the
+right, is brighter).*
 
 The data comes from [`notebooks/dataset_lensing_kaggle.ipynb`](notebooks/dataset_lensing_kaggle.ipynb)
 (about two minutes on a Kaggle T4), as eight float16 `npz` shards plus a
