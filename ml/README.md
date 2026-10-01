@@ -82,6 +82,83 @@ faster than the integrator (batched inference).
   <img src="figures/deflection_fit.png" alt="Deflection surrogate">
 </p>
 
+## Kerr lensing dataset
+
+The next two tasks share one dataset of ray-traced Kerr black holes, published on
+Kaggle as [**kerr-lensing**](https://www.kaggle.com/datasets/markopolo2310/kerr-lensing).
+
+It holds 2,000 black holes, with spin $a$ drawn uniformly from $[0, 0.99]$ and
+viewing inclination from $[15°, 85°]$, each traced at 128×128 by the GPU ray tracer
+in [`simulation/viz/gpu_render.py`](../simulation/viz/gpu_render.py). The framing
+is fixed (camera at $40M$, 30° field of view), so every sample shares one image
+domain and only the physics changes. The disk runs from the ISCO out to $18M$.
+
+Rather than finished pictures, it stores where every pixel's light ray ended up:
+
+| field | meaning |
+| --- | --- |
+| `otype` | outcome of the ray: 1 horizon (the shadow), 2 disk, 3 sky, 0 unfinished |
+| `hit_r`, `hit_ph` | where the ray crossed the disk, $(r, \varphi)$ |
+| `hit_g` | redshift factor $g$ at that crossing (Doppler + gravitational) |
+| `sky_th`, `sky_ph` | the direction an escaping ray heads off to on the sky |
+| `params` | $(a, \text{inclination})$ of each black hole |
+| `split` | train / val / test, 80/10/10 |
+
+Those fields *are* the black hole's lensing map. Push any disk emission profile
+$E(r, \varphi)$ through them (`emission_to_image` in
+[`datagen/lensing.py`](datagen/lensing.py)) and out comes the observed image, so a
+single trace yields unlimited (emission, image) pairs.
+
+<p align="center">
+  <img src="figures/kerr_lensing_sample.png" alt="One dataset sample: per-pixel ray outcome, disk hit radius, and the observed image from a sample emission">
+</p>
+
+*One sample ($a = 0.63$, inclination $83°$): the outcome of every pixel's ray, the
+disk radius it hit, and the observed image formed by pushing a sample emission
+profile through that geometry.*
+
+The data comes from [`notebooks/dataset_lensing_kaggle.ipynb`](notebooks/dataset_lensing_kaggle.ipynb)
+(about two minutes on a Kaggle T4), as eight float16 `npz` shards plus a
+`manifest.json` describing the schema. In a Kaggle notebook, use **Add Data →
+kerr-lensing**, then:
+
+```python
+import glob, numpy as np
+shards = sorted(glob.glob("/kaggle/input/kerr-lensing/**/shard_*.npz", recursive=True))
+z = np.load(shards[0])   # otype, hit_r, hit_ph, hit_g, sky_th, sky_ph, params, split
+```
+
+## Emission to image: a Fourier Neural Operator
+
+Planned, and first up. This is the function-to-function task, and the one place
+the [`fno-pde`](https://github.com/amark-23/fno-pde) models apply directly: its
+from-scratch FNO and its U-Net baseline carry over, now mapping one image to
+another. Resolution transfer is the headline: high-resolution ray tracing is
+expensive, so training at 64² and evaluating at 256² is a real payoff, not just a
+benchmark.
+
+- **FNO2d**: emission profile → observed image, with spin and inclination as
+  constant input channels.
+- **(x, y) coordinate channels**: the map is not translation-invariant, since the
+  photon ring sits at a fixed place in the image.
+- **U-Net baseline** at a matched parameter count.
+- **Resolution transfer**: train at 64², evaluate at 128² and 256².
+- **Speed** against the ray tracer.
+
+The published set is 128². For the other resolutions, run the same generator with
+`res=64` and `res=256`: the same `n` and seed give the same black holes and
+splits, and the framing is fixed, so every resolution samples the same image
+domain. Taking every other pixel of the 128² grid would not quite: its pixel
+centres run edge to edge, so the subsampled grid comes out slightly off-centre.
+
+## Spin and inclination from an image: a CNN
+
+Planned, after the FNO. The inverse problem, on the same dataset:
+
+- **CNN**: image → (spin, inclination).
+- **Noise and blur robustness**: degrade the test images step by step, and find
+  how much it takes before the estimates fail.
+
 ## Notebooks
 
 `notebooks/kaggle_smoke.ipynb` is a smoke test for running the project on Kaggle:
@@ -89,8 +166,5 @@ it clones the repo, builds the C++ core, runs the tests, and imports the package
 all on CPU. It is the template for the GPU-bound training that later tasks will
 need.
 
-## What comes next
-
-- An image-to-image model (a Fourier Neural Operator) mapping an accretion-disk
-  emission profile to a ray-traced image. tba.
-- An inverse model that reads spin and inclination back out of an image. tba.
+`notebooks/dataset_lensing_kaggle.ipynb` generates the Kerr lensing dataset above
+on a Kaggle GPU and previews a sample.
