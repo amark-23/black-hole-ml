@@ -89,6 +89,7 @@ double trace_pixel(const Kerr& bh, const Camera& cam, double alpha, double beta)
     const double r_capture = 1.01 * bh.horizon();
     const double atol = 1e-7, rtol = 1e-7;  // loose: images do not need 1e-10
     const long max_steps = 100000;
+    const double r_in = (cam.r_in > 0.0) ? cam.r_in : bh.isco();
     double h = 1.0;
 
     for (long i = 0; i < max_steps; ++i) {
@@ -96,6 +97,18 @@ double trace_pixel(const Kerr& bh, const Camera& cam, double alpha, double beta)
         const double th_before = y[KTH];
 
         adaptive_step<8>(y, h, rhs, atol, rtol);
+
+        // Crossed the spin axis (theta left [0, pi])? Boyer-Lindquist coordinates
+        // are singular there, so a ray that flies over the pole comes out with
+        // theta < 0 (or > pi), where the far-side equator sits at -pi/2 and the
+        // disk test below would never see it. Map it back onto the same point of
+        // space: theta -> -theta, phi -> phi + pi, p_theta -> -p_theta. This is the
+        // exact continuation of the geodesic through the axis.
+        if (y[KTH] < 0.0 || y[KTH] > PI) {
+            y[KTH] = (y[KTH] < 0.0) ? -y[KTH] : 2.0 * PI - y[KTH];
+            y[KPHI] += PI;
+            y[KPTH] = -y[KPTH];
+        }
 
         // Fell through the horizon: this pixel is in the shadow.
         if (y[KR] <= r_capture) return 0.0;
@@ -109,8 +122,8 @@ double trace_pixel(const Kerr& bh, const Camera& cam, double alpha, double beta)
         if (f0 * f1 < 0.0) {
             const double frac = f0 / (f0 - f1);
             const double r_cross = r_before + frac * (y[KR] - r_before);
-            if (r_cross >= cam.r_in && r_cross <= cam.r_out) {
-                const double v = cam.r_in / r_cross;  // in (0, 1], 1 at the edge
+            if (r_cross >= r_in && r_cross <= cam.r_out) {
+                const double v = r_in / r_cross;      // in (0, 1], 1 at the edge
                 const double emis = v * v;            // inner disk glows brighter
                 // p_t and p_phi are conserved, so y still holds their disk values.
                 const double g = disk_redshift(bh, r_cross, y[KPT], y[KPPH]);
