@@ -13,7 +13,11 @@ below), so a single trace yields unlimited (emission -> image) pairs: emission
 becomes free data augmentation for the FNO, and the inverse problem reads the
 fields (or images made from them) back to the parameters.
 
-Runs on a GPU (Kaggle T4); falls back to CPU for a small smoke test.
+Many holes are traced TOGETHER in one batch so the GPU is actually busy. One hole
+is only ~res*res rays, far too few to fill a T4 (it sits near-idle and the CPU
+loop dominates). Concatenating ~1M rays' worth of holes per call, with the spin
+and disk radii carried per ray, keeps the device saturated. Runs on a GPU; falls
+back to CPU for a small smoke test.
 """
 import json
 import math
@@ -60,14 +64,84 @@ def assign_splits(n, seed):
     return split
 
 
-def generate(out_dir, n=2000, res=128, r_out=18.0, seed=0, shard=250,
+def trace_batch(holes, res, r_out, device, n_steps=1500, C0=0.013, use_compile=True,
+                check_every=32, compact_below=0.85):
+    """Trace several black holes at once and return the per-ray fields for the whole
+    batch (one long [B*res*res] tensor per field, holes laid out back to back).
+
+    The spin and the horizon / disk radii are carried as per-ray tensors, so every
+    hole in the batch rides the same fused, compiled step; that is what fills the
+    GPU. Mirrors trace_frame's loop (pole reflection, horizon / disk / sky tests,
+    compaction), generalised to per-ray parameters.
+    """
+    H = W = res
+    M = 1.0
+    step = G.get_step_fn(use_compile)
+
+    Ys, a_l, rcap_l, rin_l, rout_l, resc_l = [], [], [], [], [], []
+    for a, incl in holes:
+        cam = make_cam(a, incl, (H, W), r_out)
+        Y = G.camera_rays(cam, device)
+        P = Y.shape[0]
+        rp = 1.01 * (M + math.sqrt(max(M * M - a * a, 0.0)))
+        Ys.append(Y)
+        a_l.append(torch.full((P,), float(a), device=device))
+        rcap_l.append(torch.full((P,), rp, device=device))
+        rin_l.append(torch.full((P,), float(cam["r_in"]), device=device))
+        rout_l.append(torch.full((P,), float(cam["r_out"]), device=device))
+        resc_l.append(torch.full((P,), cam["dist"] * 1.4, device=device))
+    Y = torch.cat(Ys, 0)
+    a_all, r_cap, r_in, r_out_t, r_esc = (torch.cat(a_l), torch.cat(rcap_l),
+                                          torch.cat(rin_l), torch.cat(rout_l), torch.cat(resc_l))
+    N = Y.shape[0]
+
+    names = ("otype", "hit_r", "hit_ph", "hit_g", "sky_th", "sky_ph")
+    out = dict(otype=torch.zeros(N, dtype=torch.int8, device=device),
+               hit_r=torch.zeros(N, device=device), hit_ph=torch.zeros(N, device=device),
+               hit_g=torch.zeros(N, device=device), sky_th=torch.zeros(N, device=device),
+               sky_ph=torch.zeros(N, device=device))
+    work = [out[n].clone() for n in names]
+    active = torch.ones(N, dtype=torch.bool, device=device)
+    idx = None
+
+    def write_back():
+        for n, w in zip(names, work):
+            if idx is None:
+                out[n].copy_(w)
+            else:
+                out[n][idx] = w
+
+    for i in range(n_steps):
+        if i > 0 and i % check_every == 0:
+            n_active = int(active.sum())
+            if n_active <= max(1, N // 2000):
+                break
+            if n_active < compact_below * active.shape[0]:
+                write_back()
+                keep = active.nonzero().squeeze(1)
+                idx = keep if idx is None else idx[keep]
+                Y, active = Y[keep], active[keep]
+                work = [w[keep] for w in work]
+                a_all, r_cap, r_in, r_out_t, r_esc = (a_all[keep], r_cap[keep], r_in[keep],
+                                                      r_out_t[keep], r_esc[keep])
+        Y, active, *work = step(Y, active, *work, r_esc, a_all, M, C0, r_cap, r_in, r_out_t)
+    write_back()
+    return out
+
+
+def generate(out_dir, n=2000, res=128, r_out=18.0, seed=0, shard=250, batch=None,
              device=None, n_steps=1500, C0=0.013, use_compile=True, progress=print):
-    """Trace n black holes and write npz shards plus a manifest to out_dir."""
+    """Trace n black holes (in GPU-saturating batches) and write npz shards plus a
+    manifest to out_dir. `batch` is how many holes share one GPU call; the default
+    aims for about a million rays per call."""
     device = device or ("cuda" if torch.cuda.is_available() else "cpu")
     os.makedirs(out_dir, exist_ok=True)
+    if batch is None:
+        batch = max(1, 1_000_000 // (res * res))
     params = sample_params(n, seed)
     split = assign_splits(n, seed)
     H = W = res
+    P = H * W
 
     t0 = time.time()
     shards = []
@@ -75,15 +149,17 @@ def generate(out_dir, n=2000, res=128, r_out=18.0, seed=0, shard=250,
         s1 = min(s0 + shard, n)
         otype = np.zeros((s1 - s0, H, W), np.int8)
         ch = {c: np.zeros((s1 - s0, H, W), np.float16) for c in CHANNELS}
-        for i in range(s0, s1):
-            a, incl = float(params[i, 0]), float(params[i, 1])
-            tr = G.trace_frame(make_cam(a, incl, (H, W), r_out), a, device,
-                               n_steps=n_steps, C0=C0, use_compile=use_compile)
-            otype[i - s0] = tr["otype"].reshape(H, W).cpu().numpy().astype(np.int8)
-            for c in CHANNELS:
-                ch[c][i - s0] = tr[c].reshape(H, W).cpu().numpy().astype(np.float16)
-            if (i + 1) % max(1, n // 20) == 0 or i == n - 1:
-                progress(f"  {i + 1}/{n}   {(time.time() - t0) / (i + 1):.2f}s/sample")
+        for b0 in range(s0, s1, batch):
+            b1 = min(b0 + batch, s1)
+            holes = [(float(params[i, 0]), float(params[i, 1])) for i in range(b0, b1)]
+            out = trace_batch(holes, res, r_out, device, n_steps=n_steps, C0=C0,
+                              use_compile=use_compile)
+            for j, i in enumerate(range(b0, b1)):
+                sl = slice(j * P, (j + 1) * P)
+                otype[i - s0] = out["otype"][sl].reshape(H, W).cpu().numpy().astype(np.int8)
+                for c in CHANNELS:
+                    ch[c][i - s0] = out[c][sl].reshape(H, W).cpu().numpy().astype(np.float16)
+            progress(f"  {b1}/{n}   {(time.time() - t0) / b1:.2f}s/hole")
         fn = os.path.join(out_dir, f"shard_{s0:05d}.npz")
         np.savez_compressed(fn, otype=otype, params=params[s0:s1], split=split[s0:s1], **ch)
         shards.append(os.path.basename(fn))
@@ -92,7 +168,7 @@ def generate(out_dir, n=2000, res=128, r_out=18.0, seed=0, shard=250,
     manifest = dict(
         name="kerr_lensing", n=n, res=res, dist=DIST, fov=FOV, az=AZ, r_out=r_out,
         r_in="ISCO(a)", param_names=["a", "incl_deg"],
-        a_range=[0.0, 0.99], incl_range=[15.0, 85.0],
+        a_range=[0.0, 0.99], incl_range=[15.0, 85.0], batch=batch,
         channels_f16=CHANNELS, otype={"0": "fly", "1": "horizon", "2": "disk", "3": "sky"},
         shards=shards, seed=seed,
         note="push a disk emission field through (hit_r, hit_ph) to make an "
