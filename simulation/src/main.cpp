@@ -17,6 +17,7 @@
 
 #include "geodesic.hpp"
 #include "metric.hpp"
+#include "raytrace.hpp"
 
 using namespace bhsim;
 
@@ -25,6 +26,29 @@ int main(int argc, char** argv) {
     std::string outcome;
     std::vector<Row> rows;
     char status[128];
+
+    // image: render a picture instead of a single trajectory.
+    //   bhsim image <a> <incl_deg> <half_width> <res>
+    if (mode == "image") {
+        const double PI = std::acos(-1.0);
+        Camera cam;
+        cam.a          = (argc > 2) ? std::atof(argv[2]) : 0.0;
+        const double incl_deg = (argc > 3) ? std::atof(argv[3]) : 80.0;
+        cam.incl       = incl_deg * PI / 180.0;
+        cam.half_width = (argc > 4) ? std::atof(argv[4]) : 12.0;
+        cam.res        = (argc > 5) ? std::atoi(argv[5]) : 200;
+
+        const std::vector<double> img = render_image(cam);
+        std::printf("%d %d\n", cam.res, cam.res);
+        for (int j = 0; j < cam.res; ++j) {
+            for (int i = 0; i < cam.res; ++i)
+                std::printf("%.5f ", img[static_cast<std::size_t>(j) * cam.res + i]);
+            std::printf("\n");
+        }
+        std::fprintf(stderr, "image a=%.3f incl=%.1fdeg half_width=%.1f res=%d\n",
+                     cam.a, incl_deg, cam.half_width, cam.res);
+        return 0;
+    }
 
     if (mode == "kerr") {
         const double a  = (argc > 2) ? std::atof(argv[2]) : 0.9;

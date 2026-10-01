@@ -337,7 +337,86 @@ Regenerate with `python simulation/viz/animate_kerr_spin.py`.
 
 ## Ray tracing
 
-Shooting one ray per pixel back from a camera through the geometry, to render an
-actual image of a black hole with an accretion disk (the lensed disk, photon
-ring, and shadow). The Kerr integrator is already fully three-dimensional, which
-is what an inclined camera view needs. tba.
+The orbit plots above follow one photon at a time. A ray tracer turns the same
+integrator into a picture: it fires one ray per pixel and asks where each one
+came from.
+
+### Tracing light backward
+
+Light that reaches a camera has already travelled from wherever it was emitted,
+bending through the curved space on the way. Following every ray forward from
+every possible source and keeping only the few that happen to land on the camera
+would waste almost all of the work. So the ray tracer runs time backward: it
+starts each ray at a pixel and integrates it *out* through the geometry, away
+from the camera, until the ray ends somewhere we can colour. Because the geodesic
+equations are symmetric in the affine parameter, a ray run backward follows
+exactly the path light would have taken forward.
+
+Each pixel's ray ends in one of three ways:
+
+- it falls through the horizon, so no light could have reached the camera from
+  that direction: the pixel is black, and the black patch is the **shadow**;
+- it crosses the plane of the accretion disk at a radius where the disk exists,
+  so it picks up the disk's glow;
+- it climbs back out to large radius without meeting anything: empty **sky**,
+  also black here.
+
+### The camera
+
+The camera sits far from the hole (`r_cam`, default $1000M$, where space is
+nearly flat) and looks at it from an inclination `incl` measured off the spin
+axis. At $90°$ the disk is seen edge-on as a thin line; the default $80°$ tips it
+just enough to see the top of the disk as a surface. Rays are sent parallel to
+each other (an orthographic view), one through each point of a square image plane
+`half_width` across. For each pixel the starting point and direction are turned
+into the integrator's coordinates and momenta, with the energy fixed to $E = 1$,
+and handed to the same adaptive Kerr stepper the orbits use. At $a = 0$ the Kerr
+metric is exactly Schwarzschild, so the one renderer draws both.
+
+### What the image shows
+
+![Ray-traced Schwarzschild black hole with an accretion disk](figures/raytrace_schwarzschild.png)
+
+The flat band across the middle is the near side of the disk. The arc over the
+top is the *far* side: light leaving the disk behind the hole is bent up and over
+toward the camera, so the back of the disk appears lifted above the shadow
+instead of being hidden by it. The matching arc below is the underside of that
+same far side, bent the other way. The thin bright ring hugging the shadow is the
+**photon ring**, light that looped close to the photon sphere before escaping.
+The dark centre is the shadow, a little wider than the horizon itself because the
+hole bends even near-miss rays inward.
+
+Turn on spin and the picture goes lopsided:
+
+![Ray-traced Kerr black hole](figures/raytrace_kerr.png)
+
+Frame dragging sweeps light around the direction of rotation, flattening one side
+of the shadow into the characteristic Kerr "D". Sweeping the spin up shows the
+shadow sliding and reshaping:
+
+![Ray-traced shadow morphing with spin](figures/raytrace_spin.gif)
+
+### Running it
+
+With `bhsim` built (see [Building and running](#building-and-running)), render a
+grid of pixel brightnesses straight from the command line:
+
+```
+bhsim image 0    80 12 300   > schw.txt   # spin a, inclination deg, half-width, resolution
+bhsim image 0.9  80 12 300   > kerr.txt
+```
+
+More simply, let the Python viewer call `bhsim` and apply the colour map:
+
+```
+python simulation/viz/render_image.py           # writes the two stills above
+python simulation/viz/render_image.py --sweep    # writes the spin gif
+```
+
+On Windows, pass the executable path if it is not found automatically, for
+example `python simulation/viz/render_image.py .\simulation\build\Release\bhsim.exe`.
+
+The disk here is a flat glowing annulus with a simple brightness falloff; its
+inner edge is fixed rather than tracked to the spin-dependent ISCO, and the
+colours are geometric only. Doppler and gravitational shifting of the disk light,
+a spin-dependent inner edge, and a camera that flies around the hole are tba.
