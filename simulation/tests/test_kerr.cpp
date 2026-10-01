@@ -1,7 +1,9 @@
 // Phase 4 tests: validate the Kerr Hamiltonian integrator three ways —
 //   1. a = 0 reproduces the Schwarzschild integrator (equatorial photon),
 //   2. it matches the MATLAB ode113 reference fixture (a = 0.5),
-//   3. the Hamiltonian H and the constants E, L_z stay conserved.
+//   3. the Hamiltonian H and the constants E, L_z stay conserved,
+//   4. the ISCO formula hits its known values,
+//   5. a ray flying over the spin axis still finds the disk behind the hole.
 // Returns nonzero on any failure (CTest reports it as failed).
 
 #include <algorithm>
@@ -16,6 +18,7 @@
 #include "geodesic.hpp"
 #include "integrator.hpp"
 #include "metric.hpp"
+#include "raytrace.hpp"
 
 using namespace bhsim;
 
@@ -139,6 +142,30 @@ int main() {
         std::printf("       drift: |dH|=%.2e |dE|=%.2e |dLz|=%.2e\n", max_dH, max_dE, max_dLz);
         check(max_dH < 1e-6, "Kerr Hamiltonian conserved");
         check(max_dE < 1e-12 && max_dLz < 1e-12, "E and L_z exactly conserved");
+    }
+
+    {
+        // 4. ISCO: 6M without spin, M at extremal spin, ~2.3209M at a = 0.9.
+        check(std::fabs(Kerr{1.0, 0.0}.isco() - 6.0) < 1e-12, "ISCO = 6M at a = 0");
+        check(std::fabs(Kerr{1.0, 1.0}.isco() - 1.0) < 1e-12, "ISCO = M at a = M");
+        check(std::fabs(Kerr{1.0, 0.9}.isco() - 2.320883) < 1e-6, "ISCO = 2.3209M at a = 0.9");
+    }
+
+    {
+        // 5. The pixel column alpha = 0 lies in the plane of the spin axis, so its
+        //    rays above the hole pass straight over the pole. They must still see
+        //    the far side of the disk lensed up over the shadow, like their
+        //    neighbours, rather than a black line through the image.
+        Camera cam;
+        cam.a = 0.9;
+        const Kerr bh{1.0, cam.a};
+        bool ok = true;
+        for (double beta : {5.0, 6.0, 7.0, 8.0}) {
+            const double on_axis = trace_pixel(bh, cam, 0.0, beta);
+            const double beside  = trace_pixel(bh, cam, 0.06, beta);
+            if (!(beside > 0.0 && std::fabs(on_axis - beside) < 0.05 * beside)) ok = false;
+        }
+        check(ok, "ray over the spin axis sees the lensed disk (no axis seam)");
     }
 
     std::printf("\n%d failure(s)\n", failures);

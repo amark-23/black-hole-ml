@@ -426,8 +426,11 @@ Turn on spin and the picture goes further lopsided:
 </p>
 
 Frame dragging sweeps light around the direction of rotation, flattening one side
-of the shadow into the characteristic Kerr "D". Sweeping the spin up shows the
-shadow sliding and reshaping while the beamed side stays bright:
+of the shadow into the characteristic Kerr "D". Spin also lets gas orbit stably
+much closer in, so the disk's inner edge (the ISCO) moves from $6M$ at $a = 0$ to
+about $2.3M$ at $a = 0.9$, filling the gap between disk and shadow. Sweeping the
+spin up shows the shadow sliding and reshaping while the disk creeps inward and
+the beamed side stays bright:
 
 <p align="center">
   <img src="figures/raytrace_spin.gif" alt="Ray-traced shadow morphing with spin">
@@ -453,8 +456,17 @@ python simulation/viz/render_image.py --sweep    # writes the spin gif
 On Windows, pass the executable path if it is not found automatically, for
 example `python simulation/viz/render_image.py .\simulation\build\Release\bhsim.exe`.
 
-The disk here is a flat glowing annulus with an $r^{-2}$ emissivity, shaded by the
-full relativistic $g^4$ factor above.
+The disk here is a flat glowing annulus from the spin's ISCO out to $20M$, with
+an $r^{-2}$ emissivity, shaded by the full relativistic $g^4$ factor above. The
+beamed inner edge is orders of magnitude brighter than the rest, so the viewer
+tone-maps the brightness (a smooth roll-off rather than a linear scale) to keep
+the dim side visible.
+
+Rays that pass directly over the spin axis (the image's centre column) need one
+extra step: Boyer-Lindquist coordinates are singular on the axis, and a ray that
+flies over it comes out with $\theta < 0$. The tracer maps it back onto the same
+point of space ($\theta \to -\theta$, $\phi \to \phi + \pi$, $p_\theta \to -p_\theta$),
+the exact continuation of the geodesic, so those pixels still find the disk.
 
 ### Spinning black hole clip (GPU)
 

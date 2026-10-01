@@ -37,6 +37,16 @@ struct Kerr {
 
     // Outer event horizon r_+ = M + sqrt(M^2 - a^2).
     double horizon() const { return M + std::sqrt(M * M - a * a); }
+
+    // Prograde innermost stable circular orbit (Bardeen, Press & Teukolsky 1972):
+    // 6M at a = 0, shrinking toward M as a -> M. Where an accretion disk ends.
+    double isco() const {
+        const double x = a / M;
+        const double z1 = 1.0 + std::cbrt(1.0 - x * x)
+                                * (std::cbrt(1.0 + x) + std::cbrt(1.0 - x));
+        const double z2 = std::sqrt(3.0 * x * x + z1 * z1);
+        return M * (3.0 + z2 - std::sqrt((3.0 - z1) * (3.0 + z1 + 2.0 * z2)));
+    }
 };
 
 }  // namespace bhsim

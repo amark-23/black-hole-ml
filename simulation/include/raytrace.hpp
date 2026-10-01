@@ -21,7 +21,8 @@ struct Camera {
     double r_cam  = 1000.0; // camera distance from the hole, in units of M
     double half_width = 12.0; // half the image width on the sky, in units of M
     int    res    = 200;    // output is res x res pixels
-    double r_in   = 6.0;    // disk inner edge (the ISCO for a non-spinning hole)
+    double r_in   = 0.0;    // disk inner edge; <= 0 means the ISCO for this spin
+                            // (6 M at a = 0, about 2.32 M at a = 0.9)
     double r_out  = 20.0;   // disk outer edge
 };
 
