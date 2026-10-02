@@ -326,6 +326,76 @@ after the brightness stretch):
 
 Each CNN trains in about 10 minutes on a Kaggle T4.
 
+## Orbits from the equation alone: PINNs
+
+Every model above learns from solved examples. A physics-informed neural network
+(PINN) learns from the equation instead: the network is a candidate solution
+$u(\varphi)$, autograd gives its derivatives, and the loss is how badly it fails
+the equation of motion. No orbit is ever integrated to train it.
+
+**The equations.** Equatorial orbits around a non-rotating hole in Binet form,
+$u = M/r$ as a function of the orbital angle $\varphi$:
+
+$$u'' + u = 3u^2 \quad \text{(light)}, \qquad u'' + u = \frac{1}{p} + 3f\thinspace u^2 \quad \text{(a massive body)},$$
+
+where $p$ sets the orbit's size, and $f$ is the strength of the relativistic term:
+$f = 1$ is Einstein, $f = 0$ is Newton. One smooth second-order ODE on a bounded
+interval, with no horizon singularity for orbits that stay outside. The truth comes
+from Darwin's closed-form deflection (an elliptic integral, matching numerical
+quadrature to about $10^{-12}$) and from a plain RK4 integrator.
+
+**The networks.** Small tanh MLPs (smooth second derivatives), in float64, trained
+with Adam on fresh collocation points every step, then L-BFGS. The initial
+conditions are built into the network's output, so the loss is the residual alone:
+a ray coming in from infinity has $u = 0$ and $u' = 1/b$ at $\varphi = 0$, and
+
+$$u(\varphi) = \frac{\sin\varphi + (\varphi/\Phi)^2 N(\varphi, b)}{b}$$
+
+satisfies both whatever the network $N$ does. The deflection is read off where
+$u'$ first turns negative (closest approach): $\delta\varphi = 2\varphi_\text{turn} - \pi$.
+
+### 1. One ray: how close to the photon sphere
+
+Near $b_\text{crit}$ the ray whirls around the photon sphere before escaping, and
+the orbit is chaotic there: an error grows about $e$-fold per radian. So the
+question is how close to $b_\text{crit}$ a PINN still gets the deflection right,
+from $b - b_\text{crit} = 10$ down to $10^{-4}$ (where the ray turns through almost
+7 radians before periapsis):
+
+- **One network over the whole ray**, on a domain just long enough to hold the
+  turning point (given the answer's length, as generous as it can be).
+- **Marching**: one-radian windows, each starting from where the last one ended,
+  until $u'$ turns. It needs no knowledge of the answer.
+
+### 2. Every ray at once
+
+One network $u(\varphi, b)$ for every $b \in [5.25, 30]$: a deflection surrogate
+trained on physics alone, against the data-trained surrogate above (1.4%) and the
+exact answer. The network sees $b$ either linearly or through
+$\log(b - b_\text{crit})$, which spreads out the rays near the photon sphere, where
+the deflection changes fastest.
+
+### 3. Weighing relativity from an orbit
+
+A star on a close orbit ($p = 20$, eccentricity 0.5: periapsis $13.3M$, apoapsis
+$40M$, precessing by about 50° a turn) is seen at a few noisy positions. The PINN
+fits the orbit while learning $p$ and $f$: data misfit plus the equation's
+residual, with $p$ and $f$ trainable. This is the question the GRAVITY
+collaboration answered for the star S2 around Sgr A* (they measured
+$f \approx 1.1 \pm 0.2$). S2 gets no closer than about $2800M$; these toy orbits
+come about 200 times closer in, where the effect is far larger.
+
+- **Against the classical answer**: the same data fitted by shooting, integrating
+  the ODE and fitting its initial conditions, $p$ and $f$ by least squares.
+- **Sweeps**: noise (0.1% to 10% of the mean $u$), number of positions (10 to 100)
+  and number of turns observed (1 to 3), four noise draws each, on a GR orbit and on
+  a Newtonian one. When can it tell Einstein from Newton?
+
+The code is in [`bhml/pinn.py`](bhml/pinn.py), and
+[`notebooks/pinn_geodesics_kaggle.ipynb`](notebooks/pinn_geodesics_kaggle.ipynb)
+runs all three experiments on Kaggle's CPU (no accelerator: the networks are tiny,
+and four jobs on four cores beat one GPU), in about 45 minutes. Results, figures
+and weights land in `/kaggle/working/pinn_results`.
 
 ## Notebooks
 
@@ -342,3 +412,6 @@ a Kaggle GPU.
 
 `notebooks/cnn_inverse_kaggle.ipynb` trains the spin and inclination CNNs and runs
 the blur and noise study on a Kaggle GPU.
+
+`notebooks/pinn_geodesics_kaggle.ipynb` runs the three PINN experiments on a
+Kaggle CPU.

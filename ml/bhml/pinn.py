@@ -23,7 +23,7 @@ Driven by ml/notebooks/pinn_geodesics_kaggle.ipynb on CPU. The pieces:
                        the relativistic term
   fit_shooting         the classical answer to the same inverse problem: shoot the
                        ODE and fit its initial conditions, p and f by least squares
-  run_parallel         the experiments' jobs across CPU cores
+  run_parallel / call  the experiments' jobs across CPU cores
   plot_*               the figures for the README
 
 Everything runs in float64: the residual of a second derivative is small, and
@@ -48,7 +48,7 @@ FORWARD = dict(width=32, depth=3, adam=3000, lbfgs=1000, lr=2e-3, n_col=512, n_f
                window=1.0, max_windows=60, seed=0)
 PARAM = dict(b_lo=5.25, b_hi=30.0, phi_max=2 * math.pi, enc="log", width=64, depth=4,
              adam=10000, lbfgs=2000, lr=2e-3, n_col=1024, n_fix=4096, seed=0)
-INVERSE = dict(width=64, depth=4, adam=6000, lbfgs=2000, lr=2e-3, n_col=1024, n_fix=4096,
+INVERSE = dict(width=64, depth=4, adam=3000, lbfgs=1000, lr=2e-3, n_col=1024, n_fix=4096,
                w_phys=1.0, f_init=0.5, seed=0)
 
 
@@ -425,78 +425,92 @@ def fit_inverse(obs: dict, cfg: dict | None = None):
 
     if cfg["lbfgs"]:
         _lbfgs(model.parameters(), closure, cfg["lbfgs"])
-    return model, dict(f=float(model.f), p=float(torch.exp(model.log_p)),
+    return model, dict(f=float(model.f.detach()), p=float(torch.exp(model.log_p.detach())),
                        loss=float(loss_at(fixed).detach()), time=time.time() - t0)
 
 
-def _rk4_torch(u0, v0, inv_p, f, h, n):
-    """Differentiable RK4 of u'' + u = 1/p + 3 f u^2; returns u, u' at the n + 1 nodes."""
-    def rhs(u, v):
-        return v, inv_p + 3 * f * u * u - u
+def _rk4_batch(x, span: float, n: int):
+    """RK4 of u'' + u = 1/p + 3 f u^2 for a batch of parameter rows x = (u0, u0', log p,
+    f); returns u, u' at the n + 1 nodes, shape (n + 1, batch)."""
+    u, v = x[:, 0].copy(), x[:, 1].copy()
+    inv_p, f, h = np.exp(-x[:, 2]), x[:, 3], span / n
+    us, vs = [u], [v]
 
-    us, vs = [u0], [v0]
-    u, v = u0, v0
+    def acc(u):
+        return inv_p + 3 * f * u * u - u
+
     for _ in range(n):
-        a1, b1 = rhs(u, v)
-        a2, b2 = rhs(u + h / 2 * a1, v + h / 2 * b1)
-        a3, b3 = rhs(u + h / 2 * a2, v + h / 2 * b2)
-        a4, b4 = rhs(u + h * a3, v + h * b3)
+        a1, b1 = v, acc(u)
+        a2, b2 = v + h / 2 * b1, acc(u + h / 2 * a1)
+        a3, b3 = v + h / 2 * b2, acc(u + h / 2 * a2)
+        a4, b4 = v + h * b3, acc(u + h * a3)
         u = u + h / 6 * (a1 + 2 * a2 + 2 * a3 + a4)
         v = v + h / 6 * (b1 + 2 * b2 + 2 * b3 + b4)
         us.append(u)
         vs.append(v)
-    return torch.stack(us), torch.stack(vs)
+    return np.array(us), np.array(vs)
 
 
 def _hermite(us, vs, h, phi):
     """Cubic Hermite interpolation of the RK4 nodes (values and slopes) at phi."""
-    i = torch.clamp((phi / h).long(), 0, len(us) - 2)
-    t = phi / h - i
+    i = np.clip((phi / h).astype(int), 0, len(us) - 2)[:, None]
+    t = (phi / h)[:, None] - i
     t2, t3 = t * t, t * t * t
-    return ((2 * t3 - 3 * t2 + 1) * us[i] + (t3 - 2 * t2 + t) * h * vs[i]
-            + (-2 * t3 + 3 * t2) * us[i + 1] + (t3 - t2) * h * vs[i + 1])
+    pick = np.take_along_axis
+    ib = np.broadcast_to(i, (len(phi), us.shape[1]))
+    return ((2 * t3 - 3 * t2 + 1) * pick(us, ib, 0) + (t3 - 2 * t2 + t) * h * pick(vs, ib, 0)
+            + (-2 * t3 + 3 * t2) * pick(us, ib + 1, 0) + (t3 - t2) * h * pick(vs, ib + 1, 0))
 
 
-def fit_shooting(obs: dict, f_inits=(0.0, 0.5, 1.0, 1.5), steps_per_orbit: int = 200,
-                 iters: int = 200):
+def fit_shooting(obs: dict, f_inits=(0.0, 0.5, 1.0, 1.5), steps_per_orbit: int = 100,
+                 iters: int = 60):
     """Classical least squares: integrate the ODE from (u0, u0') with (p, f) and fit
-    all four to the observations. The fit is grown one orbit at a time (a single
-    orbit pins down the phase; later ones would otherwise trap it in a wrong
-    winding) from each starting f, and the best fit is kept."""
+    all four to the observations (Levenberg-Marquardt, Jacobian by central
+    differences). The fit is grown one orbit at a time, since a single orbit pins
+    down the phase that later ones would otherwise trap in a wrong winding, from
+    each starting f; the best fit is kept."""
     t0 = time.time()
-    phi = torch.tensor(obs["phi"], dtype=DTYPE)
-    u_obs = torch.tensor(obs["u"], dtype=DTYPE)
+    phi, u_obs = np.asarray(obs["phi"]), np.asarray(obs["u"])
     ubar = float(u_obs.mean())
+    first = phi < 2 * math.pi
+    a = np.stack([np.ones(int(first.sum())), np.cos(phi[first]), np.sin(phi[first])], 1)
+    c0, c1, c2 = np.linalg.lstsq(a, u_obs[first], rcond=None)[0]   # a Kepler ellipse to start
+    step = np.array([1e-7, 1e-7, 1e-6, 1e-6])
     best = None
     for f0 in f_inits:
-        # start from a Keplerian ellipse through the first orbit's points
-        first = phi < 2 * math.pi
-        a = np.stack([np.ones(int(first.sum())), np.cos(obs["phi"][first]),
-                      np.sin(obs["phi"][first])], 1)
-        c0, c1, c2 = np.linalg.lstsq(a, obs["u"][first], rcond=None)[0]
-        x = torch.tensor([c0 + c1, c2, -math.log(max(c0, 1e-3)), f0], dtype=DTYPE,
-                         requires_grad=True)
+        x = np.array([c0 + c1, c2, -math.log(max(c0, 1e-3)), f0])
         for k in range(1, obs["n_orbits"] + 1):
-            span = 2 * math.pi * k
-            n = steps_per_orbit * k
+            span, n = 2 * math.pi * k, steps_per_orbit * k
             sel = phi <= span
 
-            def closure():
-                if x.grad is not None:
-                    x.grad.zero_()
-                us, vs = _rk4_torch(x[0], x[1], torch.exp(-x[2]), x[3], span / n, n)
-                loss = ((_hermite(us, vs, span / n, phi[sel]) - u_obs[sel]) / ubar).pow(2).mean()
-                loss.backward()
-                return loss
+            def resid(rows):              # (batch, 4) -> (n_obs, batch)
+                us, vs = _rk4_batch(rows, span, n)
+                return (_hermite(us, vs, span / n, phi[sel]) - u_obs[sel, None]) / ubar
 
-            opt = torch.optim.LBFGS([x], lr=1, max_iter=iters, line_search_fn="strong_wolfe",
-                                    tolerance_grad=1e-14, tolerance_change=1e-16)
-            opt.step(closure)
-        loss = float(closure())
+            lam = 1e-3
+            for _ in range(iters):
+                rows = np.concatenate([x[None], x + np.diag(step), x - np.diag(step)])
+                r = resid(rows)
+                r0, jac = r[:, 0], (r[:, 1:5] - r[:, 5:9]) / (2 * step)
+                g, hess = jac.T @ r0, jac.T @ jac
+                cost = r0 @ r0
+                while lam < 1e12:
+                    dx = np.linalg.solve(hess + lam * np.diag(np.diag(hess) + 1e-30), -g)
+                    r_new = resid((x + dx)[None])[:, 0]
+                    if np.isfinite(r_new).all() and r_new @ r_new < cost:
+                        x, lam = x + dx, max(lam / 3, 1e-9)
+                        break
+                    lam *= 4
+                else:
+                    break
+                if np.abs(dx).max() < 1e-12:
+                    break
+        r0 = resid(x[None])[:, 0]
+        loss = float(np.mean(r0 ** 2))
         if np.isfinite(loss) and (best is None or loss < best[0]):
-            best = (loss, x.detach().clone())
+            best = (loss, x)
     loss, x = best
-    return dict(f=float(x[3]), p=float(torch.exp(x[2])), u0=float(x[0]), v0=float(x[1]),
+    return dict(f=float(x[3]), p=float(math.exp(x[2])), u0=float(x[0]), v0=float(x[1]),
                 loss=loss, time=time.time() - t0)
 
 
@@ -535,6 +549,12 @@ def inverse_job(kw: dict) -> dict:
     if shoot:
         out["shooting"] = fit_shooting(obs)
     return out
+
+
+def call(job: tuple) -> dict:
+    """(job function, its arguments) -> result; lets one pool run mixed jobs."""
+    fn, kw = job
+    return fn(kw)
 
 
 def _init_worker():
