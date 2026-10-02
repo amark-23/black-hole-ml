@@ -35,7 +35,7 @@ from __future__ import annotations
 import math
 import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
-from multiprocessing import get_context
+from multiprocessing import get_all_start_methods, get_context
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -566,7 +566,11 @@ def run_parallel(fn, jobs, workers: int = 4, label=None):
     so a core per job beats several cores per job). Results come back in job order."""
     results = [None] * len(jobs)
     t0 = time.time()
-    ctx = get_context("fork")
+    # fork is fastest and is used on Linux (e.g. Kaggle); Windows and modern macOS
+    # have no fork, so fall back to spawn. Every job function lives in this importable
+    # module, so spawn can pickle and re-import them without re-running the caller.
+    method = "fork" if "fork" in get_all_start_methods() else "spawn"
+    ctx = get_context(method)
     with ProcessPoolExecutor(workers, mp_context=ctx, initializer=_init_worker) as ex:
         futs = {ex.submit(fn, j): i for i, j in enumerate(jobs)}
         for n, fut in enumerate(as_completed(futs), 1):
