@@ -88,10 +88,13 @@ equations themselves:
   images it breaks at the first hint of blur; trained on blurred and noisy ones it
   still reads spin to 0.05 at the Event Horizon Telescope's resolution, in these
   idealized images.
-- **Orbits from the equation alone**: physics-informed networks solve light rays
-  and orbits with the orbit equation as the loss and no training data: how close
-  to the photon sphere they hold, one network for every ray, and recovering the
-  strength of the relativistic term from a few noisy positions on an orbit (tba).
+- **Orbits from the equation alone**: physics-informed networks, with the orbit
+  equation as the loss and no training data. Marching along a light ray gets its
+  deflection to 0.2% at $b - b_\text{crit} = 10^{-3}$, where one network over the
+  ray fails. A single network for every ray predicts the deflection to 0.58%,
+  better than the data-trained surrogate. From 30 noisy positions on a close
+  orbit, a PINN measures the strength of the relativistic term as $f = 0.99$
+  (Einstein) or $0.00$ (Newton), as well as a classical fit.
 
 ## Layout
 

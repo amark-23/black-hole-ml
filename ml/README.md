@@ -27,8 +27,8 @@ repo root, for example `python -m bhml.data capture`.
 
 ## Capture classifier
 
-The first task: from a photon's starting conditions, predict whether it is
-captured or escapes. This is a binary classification problem.
+**The task:** from a photon's starting conditions, predict whether it is
+captured or escapes. A binary classification.
 
 For a non-rotating hole the answer depends only on the impact parameter: a photon
 is captured exactly when $b < b_\text{crit} = 3\sqrt3\thinspace M$. So a model trained on
@@ -56,9 +56,9 @@ so the decoy is ignored.
 
 ## Deflection surrogate
 
-The second task: predict a photon's total deflection angle $\delta\varphi$ from
-its impact parameter (for escaping photons, $b > b_\text{crit}$). This is a
-regression, and the target spans two very different regimes:
+**The task:** predict a photon's total deflection angle $\delta\varphi$ from
+its impact parameter (for escaping photons, $b > b_\text{crit}$). A regression,
+and the target spans two very different regimes:
 
 - far out ($b \gg b_\text{crit}$) the bending is gentle, $\delta\varphi \to 4M/b$,
   Einstein's weak-field result;
@@ -134,7 +134,11 @@ z = np.load(shards[0])   # otype, hit_r, hit_ph, hit_g, sky_th, sky_ph, params, 
 
 ## Emission to image: a Fourier Neural Operator
 
-The function-to-function task, and the one place the
+**The task:** given a black hole's spin and inclination and any emission profile
+for its accretion disk, produce the image a camera would see, every pixel at once,
+in place of the ray tracer.
+
+A function-to-function task, and the one place the
 [`fno-pde`](https://github.com/amark-23/fno-pde) models apply directly: its
 from-scratch FNO and its U-Net baseline carry over, now mapping one image to
 another. Resolution transfer is the headline: high-resolution ray tracing is
@@ -239,8 +243,9 @@ slightly off-centre one. Results, figures and weights land in
 
 ## Spin and inclination from an image: a CNN
 
-The inverse problem, on the same dataset: read a black hole's spin and viewing
-inclination off its image, and find how much blur and noise that survives.
+**The task:** the inverse problem, on the same dataset. Read a black hole's spin
+and viewing inclination off its image, and find how much blur and noise that
+survives.
 
 - **CNN** (`ParamCNN` in [`bhml/models.py`](bhml/models.py)): image -> (spin,
   inclination). Residual GroupNorm stages, each halving the grid, pooled to a 4x4
@@ -331,7 +336,7 @@ Each CNN trains in about 10 minutes on a Kaggle T4.
 Every model above learns from solved examples. A physics-informed neural network
 (PINN) learns from the equation instead: the network is a candidate solution
 $u(\varphi)$, autograd gives its derivatives, and the loss is how badly it fails
-the equation of motion. No orbit is ever integrated to train it.
+the equation of motion. No orbit is integrated to train it.
 
 **The equations.** Equatorial orbits around a non-rotating hole in Binet form,
 $u = M/r$ as a function of the orbital angle $\varphi$:
@@ -339,10 +344,9 @@ $u = M/r$ as a function of the orbital angle $\varphi$:
 $$u'' + u = 3u^2 \quad \text{(light)}, \qquad u'' + u = \frac{1}{p} + 3f\thinspace u^2 \quad \text{(a massive body)},$$
 
 where $p$ sets the orbit's size, and $f$ is the strength of the relativistic term:
-$f = 1$ is Einstein, $f = 0$ is Newton. One smooth second-order ODE on a bounded
-interval, with no horizon singularity for orbits that stay outside. The truth comes
-from Darwin's closed-form deflection (an elliptic integral, matching numerical
-quadrature to about $10^{-12}$) and from a plain RK4 integrator.
+$f = 1$ is Einstein, $f = 0$ is Newton. The answers are graded against Darwin's
+closed-form deflection (an elliptic integral, matching numerical quadrature to
+about $10^{-12}$) and a plain RK4 integrator.
 
 **The networks.** Small tanh MLPs (smooth second derivatives), in float64, trained
 with Adam on fresh collocation points every step, then L-BFGS. The initial
@@ -356,46 +360,131 @@ $u'$ first turns negative (closest approach): $\delta\varphi = 2\varphi_\text{tu
 
 ### 1. One ray: how close to the photon sphere
 
+**The task:** given only the equation and a light ray's impact parameter $b$, find
+the ray's path and its deflection, with no data at all. Then push $b$ towards
+$b_\text{crit}$ and find where that stops working.
+
 Near $b_\text{crit}$ the ray whirls around the photon sphere before escaping, and
-the orbit is chaotic there: an error grows about $e$-fold per radian. So the
-question is how close to $b_\text{crit}$ a PINN still gets the deflection right,
-from $b - b_\text{crit} = 10$ down to $10^{-4}$ (where the ray turns through almost
-7 radians before periapsis):
+the orbit is chaotic there: an error grows about $e$-fold per radian. The sweep
+runs from $b - b_\text{crit} = 10$ down to $10^{-4}$, where the deflection is
+10.5 radians (the ray turns through 600° before escaping). Two ways to train:
 
 - **One network over the whole ray**, on a domain just long enough to hold the
-  turning point (given the answer's length, as generous as it can be).
+  turning point (it is told the answer's length, as generous as it can be).
 - **Marching**: one-radian windows, each starting from where the last one ended,
   until $u'$ turns. It needs no knowledge of the answer.
 
+<p align="center">
+  <img src="figures/pinn_forward.png" alt="PINN rays against RK4, and deflection error against distance from the critical impact parameter">
+</p>
+
+| $b - b_\text{crit}$ | 10 | 1 | 0.1 | 0.03 | 0.01 | $10^{-3}$ | $10^{-4}$ |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| deflection (rad) | 0.33 | 1.55 | 3.59 | 4.77 | 5.86 | 8.16 | 10.46 |
+| one network | $3 \times 10^{-5}$ | $2 \times 10^{-4}$ | $7 \times 10^{-5}$ | $6 \times 10^{-3}$ | 3.8% | fails | 17% |
+| marching | $3 \times 10^{-5}$ | $2 \times 10^{-5}$ | $6 \times 10^{-5}$ | $1 \times 10^{-4}$ | $2 \times 10^{-4}$ | 0.2% | 1.6% |
+
+*Relative deflection error. "Fails": $u'$ never turned inside the domain, so there
+was no deflection to read.*
+
+- **Far from the photon sphere a PINN is very accurate** from the equation alone:
+  errors of $10^{-5}$ to $2 \times 10^{-4}$ down to $b - b_\text{crit} = 0.1$,
+  either way.
+- **One network breaks down below about 0.03**, where the deflection passes 4.8
+  radians: 3.8% at 0.01, and at $10^{-3}$ it never reaches a turning point at all.
+- **Marching holds on about a hundred times closer**: 0.02% at 0.01, 0.2% at
+  $10^{-3}$, and still 1.6% at $10^{-4}$ (seven windows). The error grows steadily
+  as $b \to b_\text{crit}$, as the chaos predicts: each window starts from the last
+  one's small error, and the photon sphere amplifies it.
+- **The price is time**: about 80 s on one Kaggle CPU core for one network, 2.5 to
+  9 minutes for marching, against a fraction of a millisecond for the closed form.
+  The point is not speed but that the network gets there with no solved example.
+
 ### 2. Every ray at once
 
-One network $u(\varphi, b)$ for every $b \in [5.25, 30]$: a deflection surrogate
-trained on physics alone, against the data-trained surrogate above (1.4%) and the
-exact answer. The network sees $b$ either linearly or through
-$\log(b - b_\text{crit})$, which spreads out the rays near the photon sphere, where
-the deflection changes fastest.
+**The task:** train one network $u(\varphi, b)$ that solves every ray with
+$b \in [5.25, 30]$ at once, again with no data, and use it as a deflection
+surrogate. The comparison is the data-trained surrogate above (1.4%).
+
+The network sees $b$ either linearly or through $\log(b - b_\text{crit})$, which
+spreads out the rays near the photon sphere, where the deflection changes fastest;
+training points are drawn uniformly in that encoding.
+
+<p align="center">
+  <img src="figures/pinn_parametric.png" alt="Deflection against impact parameter from the parametric PINN, and its error">
+</p>
+
+| encoding of $b$ | overall (relative L2) | worst | $b$ in [5.2, 5.5) | [5.5, 7) | [7, 12) | [12, 30] |
+| --- | --- | --- | --- | --- | --- | --- |
+| $\log(b - b_\text{crit})$ | **0.58%** | **1.40%** | **0.41%** | **0.08%** | **0.05%** | **0.03%** |
+| linear | 10.8% | 20.6% | 9.0% | 0.82% | 0.09% | 0.08% |
+
+- **With the log encoding, physics alone beats the data-trained surrogate**: 0.58%
+  over the whole range against 1.4%, and under 0.1% for $b \ge 5.5$. Its worst
+  point, 1.4%, is at the edge of the range ($b = 5.25$), where the deflection is
+  steepest.
+- **The encoding is what makes it work.** Seen linearly, the near-critical rays
+  occupy a sliver of the input and get a sliver of the training points, and the
+  error there is 9 to 21%; far out the two are alike.
+- Each network trained in about 16 minutes on one CPU core.
 
 ### 3. Weighing relativity from an orbit
 
-A star on a close orbit ($p = 20$, eccentricity 0.5: periapsis $13.3M$, apoapsis
-$40M$, precessing by about 50° a turn) is seen at a few noisy positions. The PINN
-fits the orbit while learning $p$ and $f$: data misfit plus the equation's
-residual, with $p$ and $f$ trainable. This is the question the GRAVITY
-collaboration answered for the star S2 around Sgr A* (they measured
-$f \approx 1.1 \pm 0.2$). S2 gets no closer than about $2800M$; these toy orbits
-come about 200 times closer in, where the effect is far larger.
+**The task:** a star on a close orbit is seen at a few noisy positions. From those
+alone, recover the orbit's size $p$ and the strength $f$ of the relativistic term:
+can it tell Einstein ($f = 1$) from Newton ($f = 0$)?
 
-- **Against the classical answer**: the same data fitted by shooting, integrating
-  the ODE and fitting its initial conditions, $p$ and $f$ by least squares.
+This is the question the GRAVITY collaboration answered for the star S2 around
+Sgr A* (they measured $f \approx 1.1 \pm 0.2$). S2 gets no closer than about
+$2800M$; this toy orbit ($p = 20$, eccentricity 0.5: periapsis $13.3M$, apoapsis
+$40M$, precessing about 50° a turn) comes about 200 times closer in, where the
+effect is far larger.
+
+- **The PINN** fits the orbit while learning $p$ and $f$: data misfit plus the
+  equation's residual, with $p$ and $f$ trainable.
+- **The classical answer** to compare against: shooting, integrating the ODE and
+  fitting its initial conditions, $p$ and $f$ by least squares.
 - **Sweeps**: noise (0.1% to 10% of the mean $u$), number of positions (10 to 100)
   and number of turns observed (1 to 3), four noise draws each, on a GR orbit and on
-  a Newtonian one. When can it tell Einstein from Newton?
+  a Newtonian one.
 
-The code is in [`bhml/pinn.py`](bhml/pinn.py), and
+<p align="center">
+  <img src="figures/pinn_inverse.png" alt="The observed GR and Newtonian orbits, and recovered f against noise for the PINN and the shooting fit">
+</p>
+
+Recovered $f$ (mean ± spread over four noise draws), 30 positions over three turns:
+
+| noise | GR orbit: PINN | GR orbit: shooting | Newtonian orbit: PINN | Newtonian orbit: shooting |
+| --- | --- | --- | --- | --- |
+| 0.1% | 0.999 ± 0.000 | 0.999 ± 0.000 | 0.000 ± 0.000 | 0.000 ± 0.001 |
+| 1% | 0.991 ± 0.004 | 0.991 ± 0.003 | -0.002 ± 0.004 | 0.000 ± 0.005 |
+| 3% | 0.974 ± 0.012 | 0.974 ± 0.008 | -0.006 ± 0.013 | 0.000 ± 0.016 |
+| 10% | 0.906 ± 0.054 | 0.913 ± 0.022 | -0.015 ± 0.044 | 0.002 ± 0.056 |
+
+- **It tells Einstein from Newton at every noise level tried.** Even at 10% noise
+  the two orbits give $f$ about 0.9 apart, with spreads of 0.06 at most. $p$ comes
+  out within 0.3% at 1% noise and within 3% at 10%.
+- **The PINN matches the classical fit**: the same $f$ to within the spread at
+  every setting, and the same $p$. It learns the orbit and the physics together
+  with no integrator in the loop.
+- **Both fall short of $f = 1$ as the noise grows** (0.99 at 1%, 0.91 at 10%), by
+  the same amount. Since the shooting fit shares it, it comes from fitting noisy
+  data by least squares, not from the network.
+- **Fewer positions or turns cost little**: 10 positions give $0.997 \pm 0.009$, 100
+  give $0.997 \pm 0.002$; a single turn gives $1.031 \pm 0.021$, since the
+  precession has had only one turn to show.
+- **The classical fit is about 50 times faster**: 8 s against 6.5 minutes per fit.
+  For one well-posed ODE with four unknowns, shooting is the right tool; the PINN's
+  case is that the same loss works unchanged where shooting gets hard (many unknowns,
+  partial observations, PDEs).
+
+The code is in [`bhml/pinn.py`](bhml/pinn.py).
 [`notebooks/pinn_geodesics_kaggle.ipynb`](notebooks/pinn_geodesics_kaggle.ipynb)
 runs all three experiments on Kaggle's CPU (no accelerator: the networks are tiny,
-and four jobs on four cores beat one GPU), in about 45 minutes. Results, figures
-and weights land in `/kaggle/working/pinn_results`.
+so they run one per core), about two hours on its four CPUs;
+[`notebooks/pinn_geodesics_local.ipynb`](notebooks/pinn_geodesics_local.ipynb) is the
+same run on a local machine, using every core. Results, figures and weights land in
+`pinn_results`.
 
 ## Notebooks
 
@@ -414,4 +503,5 @@ a Kaggle GPU.
 the blur and noise study on a Kaggle GPU.
 
 `notebooks/pinn_geodesics_kaggle.ipynb` runs the three PINN experiments on a
-Kaggle CPU.
+Kaggle CPU, and `notebooks/pinn_geodesics_local.ipynb` runs them on a local
+machine.
