@@ -239,11 +239,34 @@ slightly off-centre one. Results, figures and weights land in
 
 ## Spin and inclination from an image: a CNN
 
-The inverse problem, on the same dataset (tba):
+The inverse problem, on the same dataset: read a black hole's spin and viewing
+inclination off its image, and find how much blur and noise that survives.
 
-- **CNN**: image → (spin, inclination).
-- **Noise and blur robustness**: degrade the test images step by step, and find
-  how much it takes before the estimates fail.
+- **CNN** (`ParamCNN` in [`bhml/models.py`](bhml/models.py)): image -> (spin,
+  inclination). Residual GroupNorm stages, each halving the grid, pooled to a 4x4
+  map so the head keeps track of where features sit, then a small MLP; 3.46M
+  parameters.
+- **The images** are what a telescope would see: the $g^4 E$ image of each black
+  hole from the kerr-lensing set at 128², with a fresh random emission profile every
+  epoch, so the network has to read the black hole rather than memorise a disk
+  pattern. Each image is scaled by its own bright level (a real observation does
+  not reveal the source's luminosity) and asinh-stretched, so the faint outer disk
+  and the beamed spot both register; the pixel coordinates ride along.
+- **What there is to read**: the disk's inner edge sits at the ISCO, which moves
+  from $6M$ to about $1.5M$ as the spin rises (the way spins are measured from real
+  accretion disks, "continuum fitting"); the shadow's size and asymmetry; and the
+  Doppler-bright side, which depends on both spin and inclination.
+- **Blur and noise**: the test images are blurred with a Gaussian beam, its width
+  at half maximum measured against the shadow's diameter (the Event Horizon
+  Telescope's image of M87* is about 0.5 on this scale), and given Gaussian noise
+  of a set fraction of the peak brightness. The question is the level at which the
+  errors reach half of what guessing the mean costs. Two CNNs take it: one trained
+  on clean images, one on randomly blurred and noisy ones.
+
+The code is in [`bhml/cnn_inverse.py`](bhml/cnn_inverse.py), and
+[`notebooks/cnn_inverse_kaggle.ipynb`](notebooks/cnn_inverse_kaggle.ipynb) runs the
+experiment on a Kaggle T4 with the kerr-lensing dataset attached. Results, figures
+and weights land in `/kaggle/working/cnn_results`.
 
 ## Notebooks
 
@@ -257,3 +280,6 @@ on a Kaggle GPU and previews a sample.
 
 `notebooks/fno_lensing_kaggle.ipynb` trains and evaluates the FNO and the U-Net on
 a Kaggle GPU.
+
+`notebooks/cnn_inverse_kaggle.ipynb` trains the spin and inclination CNNs and runs
+the blur and noise study on a Kaggle GPU.

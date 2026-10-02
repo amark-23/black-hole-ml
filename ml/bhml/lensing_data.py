@@ -231,28 +231,37 @@ def build_inputs(a: torch.Tensor, incl: torch.Tensor, emis: Emissions, res: int,
     return x, scale
 
 
-def make_batch(ds: LensingSet, rows, emis: Emissions, device, g_pow: float = 4.0):
-    """Inputs, targets and per-sample scales for the holes ds[rows], with one
-    emission profile per row in `emis` (on any device).
-
-    x: (B, N, N, 5) see build_inputs
-    y: (B, N, N, 1) the observed image, g^4 E on disk pixels, divided by the
-                    same per-sample scale as the input (the true image is y * scale)
-    """
+def observed_images(ds: LensingSet, rows, emis: Emissions, device, g_pow: float = 4.0):
+    """The images a telescope would see for the holes ds[rows], one emission
+    profile per row in `emis`: g^4 E(hit_r, hit_ph) on disk pixels, 0 on the shadow
+    and the sky. (B, N, N), in the emission's own (arbitrary) brightness units."""
     rows = np.asarray(rows)
 
     def as_t(arr):
         return torch.from_numpy(np.ascontiguousarray(arr)).to(device)
 
     a = as_t(ds.params[rows, 0]).float()
-    incl = as_t(ds.params[rows, 1]).float()
-    x, scale = build_inputs(a, incl, emis, ds.res, ds.manifest)
     otype = as_t(ds.otype[rows])
     hit_r = as_t(ds.hit_r[rows]).float()
     hit_ph = as_t(ds.hit_ph[rows]).float()
     hit_g = as_t(ds.hit_g[rows]).float()
-    emis = emis.to(device)
-    y = torch.where(otype == 2,
-                    emis(hit_r, hit_ph, isco_radius(a)) * hit_g.clamp(min=0) ** g_pow,
-                    torch.zeros_like(hit_r))
+    return torch.where(otype == 2,
+                       emis.to(device)(hit_r, hit_ph, isco_radius(a))
+                       * hit_g.clamp(min=0) ** g_pow,
+                       torch.zeros_like(hit_r))
+
+
+def make_batch(ds: LensingSet, rows, emis: Emissions, device, g_pow: float = 4.0):
+    """Inputs, targets and per-sample scales for the holes ds[rows], with one
+    emission profile per row in `emis` (on any device).
+
+    x: (B, N, N, 5) see build_inputs
+    y: (B, N, N, 1) the observed image (observed_images), divided by the same
+                    per-sample scale as the input (the true image is y * scale)
+    """
+    rows = np.asarray(rows)
+    a = torch.from_numpy(ds.params[rows, 0]).float().to(device)
+    incl = torch.from_numpy(ds.params[rows, 1]).float().to(device)
+    x, scale = build_inputs(a, incl, emis, ds.res, ds.manifest)
+    y = observed_images(ds, rows, emis, device, g_pow)
     return x, (y / scale[:, None, None])[..., None], scale

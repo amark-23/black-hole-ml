@@ -1,9 +1,9 @@
 """Neural network models for the black-hole ML tasks.
 
-A small MLP for the photon capture classifier and the deflection surrogate, and,
-for the emission -> image operator, a 2D Fourier Neural Operator with a U-Net
-baseline. The FNO and the U-Net follow the from-scratch versions in
-https://github.com/amark-23/fno-pde.
+A small MLP for the photon capture classifier and the deflection surrogate; for
+the emission -> image operator, a 2D Fourier Neural Operator with a U-Net baseline
+(both after the from-scratch versions in https://github.com/amark-23/fno-pde); and
+a CNN regressor that reads spin and inclination off an image.
 """
 
 import torch
@@ -170,6 +170,37 @@ class UNet2d(nn.Module):
         for up, dec, skip in zip(self.up, self.dec, reversed(skips)):
             h = dec(torch.cat([up(h), skip], dim=1))
         return self.head(h).permute(0, 2, 3, 1)
+
+
+# --------------------------------------------------------------------------- #
+# CNN regressor for the inverse problem
+# --------------------------------------------------------------------------- #
+
+class ParamCNN(nn.Module):
+    """Image -> a few numbers (here spin and inclination).
+
+    Residual GroupNorm stages, each halving the grid, then an adaptive pool to a
+    4x4 map (so the head still knows where features sit: the black hole is framed
+    at the centre, and which side is bright matters) and an MLP head.
+    Input (batch, H, W, in_channels) -> output (batch, n_out).
+    """
+
+    def __init__(self, in_channels: int = 3, n_out: int = 2, width: int = 32,
+                 n_stages: int = 5):
+        super().__init__()
+        chans = [width * min(2 ** i, 8) for i in range(n_stages)]
+        layers: list[nn.Module] = [nn.Conv2d(in_channels, chans[0], 3, padding=1)]
+        cin = chans[0]
+        for c in chans:
+            layers += [ResBlock2d(cin, c), nn.AvgPool2d(2)]
+            cin = c
+        self.body = nn.Sequential(*layers)
+        self.pool = nn.AdaptiveAvgPool2d(4)
+        self.head = nn.Sequential(nn.Flatten(), nn.Linear(cin * 16, 256), nn.GELU(),
+                                  nn.Linear(256, n_out))
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.head(self.pool(self.body(x.permute(0, 3, 1, 2))))
 
 
 def count_params(model: nn.Module) -> int:
