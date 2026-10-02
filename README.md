@@ -79,7 +79,7 @@ Small models trained on data the simulator produces:
   does to the light of an accretion disk, across spins and inclinations. Trained on
   64² images, it keeps a 15-20% error up to 256², where a U-Net of the same size,
   slightly better on its own grid (12%), climbs to 62%. It runs 40 to 70 times
-  faster than the ray tracer.
+  faster than the ray tracer. (to be revisited)
 
 ## Layout
 
