@@ -138,7 +138,7 @@ $$
 \frac{dp_r}{d\lambda}
 = -\frac{\varepsilon M}{r^2} + \frac{L^2}{r^3} - \frac{3ML^2}{r^4},
 \qquad
-V(r) = \left(1 - \frac{2M}{r}\right)\!\left(\varepsilon + \frac{L^2}{r^2}\right).
+V(r) = \left(1 - \frac{2M}{r}\right)!\left(\varepsilon + \frac{L^2}{r^2}\right).
 $$
 
 $E$ and $L$ are set from the starting conditions and then held fixed; watching
