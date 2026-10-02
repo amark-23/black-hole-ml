@@ -134,26 +134,47 @@ z = np.load(shards[0])   # otype, hit_r, hit_ph, hit_g, sky_th, sky_ph, params, 
 
 ## Emission to image: a Fourier Neural Operator
 
-Planned, and first up. This is the function-to-function task, and the one place
-the [`fno-pde`](https://github.com/amark-23/fno-pde) models apply directly: its
+The function-to-function task, and the one place the
+[`fno-pde`](https://github.com/amark-23/fno-pde) models apply directly: its
 from-scratch FNO and its U-Net baseline carry over, now mapping one image to
 another. Resolution transfer is the headline: high-resolution ray tracing is
 expensive, so training at 64² and evaluating at 256² is a real payoff, not just a
 benchmark.
 
-- **FNO2d**: emission profile → observed image, with spin and inclination as
-  constant input channels.
-- **(x, y) coordinate channels**: the map is not translation-invariant, since the
-  photon ring sits at a fixed place in the image.
-- **U-Net baseline** at a matched parameter count.
-- **Resolution transfer**: train at 64², evaluate at 128² and 256².
-- **Speed** against the ray tracer.
+**The input.** An FNO maps a field on a grid to a field on the same grid, so the
+emission profile $E(r, \varphi)$ is shown to it the way the camera would see it with
+gravity switched off: a straight-line projection of the disk onto the ray tracer's
+own pixels (`flat_disk_view` in [`bhml/lensing_data.py`](bhml/lensing_data.py),
+pinned to the tracer's camera by a test against a weak-field trace). The target is
+the ray-traced image, $g^4 E$ at each pixel's disk crossing. Input and output share
+one image domain at every resolution, and what the model learns is exactly what
+gravity adds: the bending, the far side lifted over the shadow, the photon ring,
+the shadow itself, and the Doppler beaming.
 
-The published set is 128². For the other resolutions, run the same generator with
-`res=64` and `res=256`: the same `n` and seed give the same black holes and
-splits, and the framing is fixed, so every resolution samples the same image
-domain. Taking every other pixel of the 128² grid would not quite: its pixel
-centres run edge to edge, so the subsampled grid comes out slightly off-centre.
+- **FNO2d** ([`bhml/models.py`](bhml/models.py)): five input channels, that field,
+  spin, inclination, and the pixel coordinates $(x, y)$, since the map is not
+  translation-invariant (the photon ring sits at a fixed place). Images are not
+  periodic, so the domain is padded by an eighth on each axis before the Fourier
+  layers; padding by a fraction keeps it the same physical size at every
+  resolution.
+- **U-Net baseline** with the same inputs, at a matched parameter count (2.37M and
+  2.28M real-valued parameters).
+- **Training** ([`bhml/fno_lensing.py`](bhml/fno_lensing.py)): relative L2 loss and
+  Adam, with a fresh random emission profile (a power law with streaks, spirals and
+  hot spots) for every black hole every epoch, and fixed profiles for validation
+  and testing.
+- **Resolution transfer**: train at 64², then evaluate the same test black holes,
+  with the same emission profiles, at 128² and 256².
+- **Speed** against the GPU ray tracer, per image.
+
+Run [`notebooks/fno_lensing_kaggle.ipynb`](notebooks/fno_lensing_kaggle.ipynb) on a
+Kaggle T4 with the kerr-lensing dataset attached. The 128² test black holes come
+from the published set; the notebook traces the 64² set (every hole, for training)
+and the 256² test holes itself, with the same generator, `n` and seed, so every
+resolution has the same black holes and splits. Every resolution is traced rather
+than subsampled: the ray tracer's pixel centres run edge to edge, so taking every
+other pixel of a finer grid would give a slightly off-centre one. Results, figures
+and weights land in `/kaggle/working/fno_results`.
 
 ## Spin and inclination from an image: a CNN
 
@@ -172,3 +193,6 @@ need.
 
 `notebooks/dataset_lensing_kaggle.ipynb` generates the Kerr lensing dataset above
 on a Kaggle GPU and previews a sample.
+
+`notebooks/fno_lensing_kaggle.ipynb` trains and evaluates the FNO and the U-Net on
+a Kaggle GPU.

@@ -130,38 +130,48 @@ def trace_batch(holes, res, r_out, device, n_steps=6000, C0=0.013, use_compile=T
 
 
 def generate(out_dir, n=2000, res=128, r_out=18.0, seed=0, shard=250, batch=None,
-             device=None, n_steps=6000, C0=0.013, use_compile=True, progress=print):
+             device=None, n_steps=6000, C0=0.013, use_compile=True, splits=None,
+             progress=print):
     """Trace n black holes (in GPU-saturating batches) and write npz shards plus a
     manifest to out_dir. `batch` is how many holes share one GPU call; the default
-    aims for about a million rays per call."""
+    aims for about a million rays per call.
+
+    `splits` (e.g. ("test",)) traces only the holes in those splits. The holes,
+    their parameters and their splits are still those of the full n-hole set, so
+    sets made at different resolutions match hole for hole: every shard stores
+    each hole's `index` in that set."""
     device = device or ("cuda" if torch.cuda.is_available() else "cpu")
     os.makedirs(out_dir, exist_ok=True)
     if batch is None:
         batch = max(1, 1_000_000 // (res * res))
     params = sample_params(n, seed)
     split = assign_splits(n, seed)
+    todo = np.arange(n) if splits is None else np.flatnonzero(np.isin(split, list(splits)))
+    m = len(todo)
     H = W = res
     P = H * W
 
     t0 = time.time()
     shards = []
-    for s0 in range(0, n, shard):
-        s1 = min(s0 + shard, n)
+    for s0 in range(0, m, shard):
+        s1 = min(s0 + shard, m)
+        sel = todo[s0:s1]
         otype = np.zeros((s1 - s0, H, W), np.int8)
         ch = {c: np.zeros((s1 - s0, H, W), np.float16) for c in CHANNELS}
         for b0 in range(s0, s1, batch):
             b1 = min(b0 + batch, s1)
-            holes = [(float(params[i, 0]), float(params[i, 1])) for i in range(b0, b1)]
+            holes = [(float(params[i, 0]), float(params[i, 1])) for i in todo[b0:b1]]
             out = trace_batch(holes, res, r_out, device, n_steps=n_steps, C0=C0,
                               use_compile=use_compile)
-            for j, i in enumerate(range(b0, b1)):
+            for j in range(b1 - b0):
                 sl = slice(j * P, (j + 1) * P)
-                otype[i - s0] = out["otype"][sl].reshape(H, W).cpu().numpy().astype(np.int8)
+                otype[b0 - s0 + j] = out["otype"][sl].reshape(H, W).cpu().numpy().astype(np.int8)
                 for c in CHANNELS:
-                    ch[c][i - s0] = out[c][sl].reshape(H, W).cpu().numpy().astype(np.float16)
-            progress(f"  {b1}/{n}   {(time.time() - t0) / b1:.2f}s/hole")
+                    ch[c][b0 - s0 + j] = out[c][sl].reshape(H, W).cpu().numpy().astype(np.float16)
+            progress(f"  {b1}/{m}   {(time.time() - t0) / b1:.2f}s/hole")
         fn = os.path.join(out_dir, f"shard_{s0:05d}.npz")
-        np.savez_compressed(fn, otype=otype, params=params[s0:s1], split=split[s0:s1], **ch)
+        np.savez_compressed(fn, otype=otype, params=params[sel], split=split[sel],
+                            index=sel.astype(np.int32), **ch)
         shards.append(os.path.basename(fn))
         progress(f"wrote {fn}")
 
@@ -170,7 +180,7 @@ def generate(out_dir, n=2000, res=128, r_out=18.0, seed=0, shard=250, batch=None
         r_in="ISCO(a)", param_names=["a", "incl_deg"],
         a_range=[0.0, 0.99], incl_range=[15.0, 85.0], batch=batch,
         channels_f16=CHANNELS, otype={"0": "fly", "1": "horizon", "2": "disk", "3": "sky"},
-        shards=shards, seed=seed,
+        shards=shards, seed=seed, splits=list(splits) if splits else "all", n_traced=m,
         note="push a disk emission field through (hit_r, hit_ph) to make an "
              "observed image; see emission_to_image in lensing.py",
     )
