@@ -10,8 +10,9 @@ The project has 2 parts:
   black holes, validated against known physics and drawn as orbits, shadows, and
   animations.
 - [`ml/`](ml) trains machine-learning models on the simulator's output: a
-  classifier that rediscovers the capture threshold, and a surrogate that predicts
-  light bending hundreds of times faster than integrating it.
+  classifier that rediscovers the capture threshold, a surrogate that predicts
+  light bending hundreds of times faster than integrating it, and a neural operator
+  that turns a disk's light into the lensed image of a spinning black hole.
 
 <p align="center">
   <img src="simulation/figures/black_hole_spin.gif" alt="Ray-traced spinning black hole with its accretion disk">
@@ -74,6 +75,11 @@ Small models trained on data the simulator produces:
   from labeled examples, to about 99.9% accuracy.
 - **Deflection surrogate**: predicts light bending to about 1.4% error while
   running roughly 200 times faster than the integrator.
+- **Emission-to-image operator**: a Fourier Neural Operator learns what gravity
+  does to the light of an accretion disk, across spins and inclinations. Trained on
+  64² images, it keeps a 15-20% error up to 256², where a U-Net of the same size,
+  slightly better on its own grid (12%), climbs to 62%. It runs 40 to 70 times
+  faster than the ray tracer.
 
 ## Layout
 

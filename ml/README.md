@@ -138,8 +138,16 @@ The function-to-function task, and the one place the
 [`fno-pde`](https://github.com/amark-23/fno-pde) models apply directly: its
 from-scratch FNO and its U-Net baseline carry over, now mapping one image to
 another. Resolution transfer is the headline: high-resolution ray tracing is
-expensive, so training at 64² and evaluating at 256² is a real payoff, not just a
-benchmark.
+expensive, so a model trained on cheap 64² images that holds up at 256² is a real
+payoff, not just a benchmark.
+
+<p align="center">
+  <img src="figures/fno_pairs.png" alt="Training pairs: emission seen with gravity off, and the ray-traced image">
+</p>
+
+*The task, from face-on to edge-on. Top: a disk emission profile seen with gravity
+switched off. Bottom: the same emission through the ray-traced geometry of that
+black hole, which is what the models learn to produce.*
 
 **The input.** An FNO maps a field on a grid to a field on the same grid, so the
 emission profile $E(r, \varphi)$ is shown to it the way the camera would see it with
@@ -156,29 +164,82 @@ the shadow itself, and the Doppler beaming.
   translation-invariant (the photon ring sits at a fixed place). Images are not
   periodic, so the domain is padded by an eighth on each axis before the Fourier
   layers; padding by a fraction keeps it the same physical size at every
-  resolution.
+  resolution. 12 Fourier modes, width 32, 4 layers.
 - **U-Net baseline** with the same inputs, at a matched parameter count (2.37M and
   2.28M real-valued parameters).
-- **Training** ([`bhml/fno_lensing.py`](bhml/fno_lensing.py)): relative L2 loss and
-  Adam, with a fresh random emission profile (a power law with streaks, spirals and
-  hot spots) for every black hole every epoch, and fixed profiles for validation
-  and testing.
-- **Resolution transfer**: train at 64², then evaluate the same test black holes,
-  with the same emission profiles, at 128² and 256².
-- **Speed** against the GPU ray tracer, per image.
+- **Training** ([`bhml/fno_lensing.py`](bhml/fno_lensing.py)): 1,600 black holes at
+  64², 300 epochs, relative L2 loss and Adam, with a fresh random emission profile
+  (a power law with streaks, spirals and hot spots) for every black hole every
+  epoch, and fixed profiles for validation and testing.
+- **Resolution transfer**: the same 200 test black holes, never seen in training,
+  with the same emission profiles, at 64², 128² and 256².
 
-Run [`notebooks/fno_lensing_kaggle.ipynb`](notebooks/fno_lensing_kaggle.ipynb) on a
-Kaggle T4 with the kerr-lensing dataset attached. The 128² test black holes come
-from the published set; the notebook traces the 64² set (every hole, for training)
-and the 256² test holes itself, with the same generator, `n` and seed, so every
-resolution has the same black holes and splits. Every resolution is traced rather
-than subsampled: the ray tracer's pixel centres run edge to edge, so taking every
-other pixel of a finer grid would give a slightly off-centre one. Results, figures
-and weights land in `/kaggle/working/fno_results`.
+### Results
+
+Relative L2 error over the whole image, averaged over the test black holes:
+
+| | 64² (training grid) | 128² | 256² |
+| --- | --- | --- | --- |
+| FNO | 15.0% | **17.9%** | **20.3%** |
+| U-Net | **12.1%** | 53.1% | 62.0% |
+
+<p align="center">
+  <img src="figures/fno_resolution_transfer.png" alt="Test error against evaluation resolution for the FNO and the U-Net">
+</p>
+
+- **On its own grid the U-Net is more accurate**, 12.1% against 15.0%. Its
+  multiscale convolutions capture the sharp shadow edge and the thin photon ring
+  better than the FNO's 12 Fourier modes; the same happened for 2D Navier-Stokes in
+  `fno-pde`.
+- **Off its grid the U-Net breaks down**, to 53% at 128² and 62% at 256². Its 3x3
+  kernels are tied to pixels, so on a finer grid each one covers a smaller patch of
+  sky and can no longer move light as far as lensing does: at 256² its output is
+  close to the gravity-off input with a hole in it (below).
+- **The FNO carries over** with the same weights: 17.9% at 128² and 20.3% at 256².
+  It is not perfectly flat. Finer grids show sharper features than it ever saw at
+  64², a thinner photon ring and a crisper shadow edge, and that is where its error
+  sits.
+- **The FNO is not overfitting**: its training and validation errors stay level
+  (14.8% and 14.9% at the end), and both were still falling at epoch 300, so a
+  larger model or a longer run should bring its error down further. The U-Net goes
+  lower in training (9.8%) than on new black holes (11.7%).
+
+<p align="center">
+  <img src="figures/fno_examples_256.png" alt="Predictions at 256x256 from models trained at 64x64">
+</p>
+
+*Both models trained at 64², run at 256² on test black holes: the gravity-off
+input, the ray-traced truth, and each model's prediction with its error. The FNO
+keeps the lensed structure; the U-Net barely bends the light.*
+
+**Speed.** Per image on a Kaggle T4, against the batched GPU ray tracer the dataset
+was made with, with the speed-up over the ray tracer in brackets. The models'
+time includes building their inputs from the spin, inclination and emission:
+
+| | 64² | 128² | 256² |
+| --- | --- | --- | --- |
+| Ray tracer | 33.3 ms | 73.8 ms | 296.5 ms |
+| FNO | 0.49 ms (69x) | 1.62 ms (45x) | 7.54 ms (39x) |
+| U-Net | 0.69 ms (48x) | 2.53 ms (29x) | 11.22 ms (26x) |
+
+The ray tracer's time buys the geometry of one black hole, after which any
+emission profile is cheap (`emission_to_image`), so the models pay off for black
+holes that have not been traced: a new spin or inclination.
+
+**Running it.** [`notebooks/fno_lensing_kaggle.ipynb`](notebooks/fno_lensing_kaggle.ipynb)
+runs the whole experiment on a Kaggle T4 with the kerr-lensing dataset attached,
+in about half an hour (training takes 10 minutes for the FNO and 18 for the U-Net).
+The 128² test black holes come from the published set; the notebook traces the
+64² set (every black hole, for training) and the 256² test holes itself, with the
+same generator, `n` and seed, so every resolution has the same black holes and
+splits. Every resolution is traced rather than subsampled: the ray tracer's pixel
+centres run edge to edge, so taking every other pixel of a finer grid would give a
+slightly off-centre one. Results, figures and weights land in
+`/kaggle/working/fno_results`.
 
 ## Spin and inclination from an image: a CNN
 
-Planned, after the FNO. The inverse problem, on the same dataset:
+The inverse problem, on the same dataset (tba):
 
 - **CNN**: image → (spin, inclination).
 - **Noise and blur robustness**: degrade the test images step by step, and find

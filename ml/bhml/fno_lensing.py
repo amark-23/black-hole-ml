@@ -205,7 +205,8 @@ def plot_examples(models: dict, ds: LensingSet, rows, emis_fixed: Emissions, dev
             if i == 0:
                 ax[i, c].set_title(name, fontsize=10)
                 ax[i, c + 1].set_title(f"|{name} error|", fontsize=10)
-            ax[i, c].text(2, 6, f"{100 * err:.1f}%", color="w", fontsize=8)
+            ax[i, c].text(0.03, 0.97, f"{100 * err:.1f}%", color="w", fontsize=8, va="top",
+                          transform=ax[i, c].transAxes)
             c += 2
     ax[0, 0].set_title("input: gravity off", fontsize=10)
     ax[0, 1].set_title("truth: ray traced", fontsize=10)
