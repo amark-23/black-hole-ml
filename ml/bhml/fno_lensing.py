@@ -34,7 +34,7 @@ from bhml.models import FNO2d, UNet2d, count_params
 DEFAULTS = dict(
     fno=dict(modes=12, width=32, depth=4, pad_frac=0.125),
     unet=dict(width=34, n_levels=3),          # about the FNO's parameter count
-    epochs=150, batch_size=32, lr=1e-3, weight_decay=1e-4, lr_step=50, lr_gamma=0.5,
+    epochs=300, batch_size=32, lr=1e-3, weight_decay=1e-4, lr_step=100, lr_gamma=0.5,
     seed=0, eval_every=5,
 )
 
