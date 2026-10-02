@@ -11,8 +11,9 @@ The project has 2 parts:
   animations.
 - [`ml/`](ml) trains machine-learning models on the simulator's output: a
   classifier that rediscovers the capture threshold, a surrogate that predicts
-  light bending hundreds of times faster than integrating it, and a neural operator
-  that turns a disk's light into the lensed image of a spinning black hole.
+  light bending hundreds of times faster than integrating it, a neural operator
+  that turns a disk's light into the lensed image of a spinning black hole, and a
+  CNN that reads the spin back off the image.
 
 <p align="center">
   <img src="simulation/figures/black_hole_spin.gif" alt="Ray-traced spinning black hole with its accretion disk">
@@ -71,7 +72,7 @@ inward, from $6M$ at $a = 0$ to about $1.24M$ near the extremal limit.
 
 Small models trained on data the simulator produces:
 
-- **Capture classifier**: recovers the capture threshold $b_\text{crit} = 3\sqrt3\,M$
+- **Capture classifier**: recovers the capture threshold $b_\text{crit} = 3\sqrt3\thinspace M$
   from labeled examples, to about 99.9% accuracy.
 - **Deflection surrogate**: predicts light bending to about 1.4% error while
   running roughly 200 times faster than the integrator.
@@ -80,6 +81,11 @@ Small models trained on data the simulator produces:
   64² images, it keeps a 15-20% error up to 256², where a U-Net of the same size,
   slightly better on its own grid (12%), climbs to 62%. It runs 40 to 70 times
   faster than the ray tracer. (to be revisited)
+- **Spin from an image**: a CNN reads a black hole's spin and inclination off its
+  image, to 0.007 in spin and half a degree in inclination. Trained on clean
+  images it breaks at the first hint of blur; trained on blurred and noisy ones it
+  still reads spin to 0.05 at the Event Horizon Telescope's resolution, in these
+  idealized images.
 
 ## Layout
 

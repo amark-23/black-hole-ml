@@ -31,7 +31,7 @@ The first task: from a photon's starting conditions, predict whether it is
 captured or escapes. This is a binary classification problem.
 
 For a non-rotating hole the answer depends only on the impact parameter: a photon
-is captured exactly when $b < b_\text{crit} = 3\sqrt3\,M$. So a model trained on
+is captured exactly when $b < b_\text{crit} = 3\sqrt3\thinspace M$. So a model trained on
 $b$ should discover a decision boundary sitting at $3\sqrt3 \approx 5.196$. We
 also feed it the start radius $r_0$ as a decoy, since capture does not depend on
 it, to see whether the model correctly learns to ignore an irrelevant input.
@@ -88,7 +88,7 @@ The next two tasks share one dataset of ray-traced Kerr black holes, published o
 Kaggle as [**kerr-lensing**](https://www.kaggle.com/datasets/markopolo2310/kerr-lensing).
 
 It holds 2,000 black holes, with spin $a$ drawn uniformly from $[0, 0.99]$ and
-viewing inclination from $[15°, 85°]$, each traced at 128×128 by the GPU ray tracer
+viewing inclination from 15° to 85°, each traced at 128×128 by the GPU ray tracer
 in [`simulation/viz/gpu_render.py`](../simulation/viz/gpu_render.py). The framing
 is fixed (camera at $40M$, 30° field of view), so every sample shares one image
 domain and only the physics changes. The disk runs from the ISCO out to $18M$.
@@ -116,7 +116,7 @@ dimmed.
   <img src="figures/kerr_lensing_sample.png" alt="One dataset sample: per-pixel ray outcome, disk hit radius, and the observed image from a sample emission">
 </p>
 
-*One sample ($a = 0.63$, inclination $83°$): the outcome of every pixel's ray, the
+*One sample ($a = 0.63$, inclination 83°): the outcome of every pixel's ray, the
 disk radius it hit, and the observed image formed by pushing a sample emission
 profile through that geometry, with its $g^4$ shift (the approaching side, on the
 right, is brighter).*
@@ -267,6 +267,65 @@ The code is in [`bhml/cnn_inverse.py`](bhml/cnn_inverse.py), and
 [`notebooks/cnn_inverse_kaggle.ipynb`](notebooks/cnn_inverse_kaggle.ipynb) runs the
 experiment on a Kaggle T4 with the kerr-lensing dataset attached. Results, figures
 and weights land in `/kaggle/working/cnn_results`.
+
+### Results
+
+Mean absolute errors on the 200 test black holes, which the networks never saw,
+each with a fixed emission profile they never saw either:
+
+| | spin | inclination |
+| --- | --- | --- |
+| CNN, trained on clean images | **0.007** | **0.54°** |
+| CNN, trained on blurred and noisy images | 0.012 | 1.07° |
+| guessing the mean | 0.244 | 17.6° |
+
+<p align="center">
+  <img src="figures/cnn_scatter.png" alt="Predicted against true spin and inclination on clean test images">
+</p>
+
+On clean images the CNN reads spin to 0.007 and inclination to about half a
+degree, more than 30 times better than guessing, whatever the disk's emission
+pattern.
+It does so at every viewing angle: its spin error stays between 0.006 and 0.009
+from face-on to edge-on, and its inclination error falls from 0.8° face-on to
+0.35° edge-on, where the disk's tilt is easiest to see.
+
+**Blur and noise.** What the network sees as the test images degrade (its input,
+after the brightness stretch):
+
+<p align="center">
+  <img src="figures/cnn_degradations.png" alt="One test image through the blur and noise ladders">
+</p>
+
+<p align="center">
+  <img src="figures/cnn_robustness.png" alt="Spin and inclination errors against blur and noise for both CNNs">
+</p>
+
+| spin error / inclination error | clean | blur 0.1 | blur 0.5 (EHT) | blur 1.0 | noise 0.1 | noise 0.5 |
+| --- | --- | --- | --- | --- | --- | --- |
+| trained on clean images | 0.007 / 0.5° | 0.190 / 2.7° | 0.395 / 14.1° | 0.295 / 15.3° | 0.054 / 4.6° | 0.128 / 11.6° |
+| trained on blurred and noisy images | 0.012 / 1.1° | 0.025 / 1.3° | 0.048 / 2.2° | 0.068 / 3.1° | 0.015 / 1.8° | 0.037 / 4.9° |
+
+- **Trained on clean images, the CNN breaks at the first hint of blur.** Its spin
+  error reaches half of guessing at a beam only 6% of the shadow's diameter (about
+  four pixels here), and its inclination error at 0.36. It reads spin from fine
+  detail, the disk's inner edge and the photon ring, which is exactly what blur
+  erases first. Noise hurts it far less: spin holds out to a noise of 0.46.
+- **Trained on blurred and noisy images, it never fails within the sweep.** At the
+  Event Horizon Telescope's resolution (a beam half the shadow's diameter) it still
+  reads spin to 0.048 and inclination to 2.2°; with a beam as wide as the shadow,
+  to 0.068 and 3.1°; with noise at half the peak brightness, to 0.037 and 4.9°. The
+  price is paid on clean images, 0.012 in spin instead of 0.007.
+- **What this says, and what it does not.** These images are idealized: a thin
+  disk that ends at the ISCO, emission from the same family the network trained
+  on, a fixed distance and framing, and Gaussian blur and noise. Real EHT data are
+  sparse interferometric measurements of hot, turbulent, largely transparent gas,
+  so these numbers are a ceiling for this kind of model rather than a forecast for
+  M87*. What carries over is the lesson: a network has to be trained on the
+  degradations it will meet.
+
+Each CNN trains in about 10 minutes on a Kaggle T4.
+
 
 ## Notebooks
 

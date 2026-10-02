@@ -96,7 +96,7 @@ $(t, r, \theta, \varphi)$, with its event horizon at $r = 2M$.
 $$
 ds^2 = -\left(1 - \frac{2M}{r}\right)dt^2
        + \left(1 - \frac{2M}{r}\right)^{-1}dr^2
-       + r^2\,d\theta^2 + r^2\sin^2\theta\,d\varphi^2
+       + r^2\thinspace d\theta^2 + r^2\sin^2\theta\thinspace d\varphi^2
 $$
 
 Because the geometry is spherically symmetric, every orbit stays in a single
@@ -138,7 +138,7 @@ $$
 \frac{dp_r}{d\lambda}
 = -\frac{\varepsilon M}{r^2} + \frac{L^2}{r^3} - \frac{3ML^2}{r^4},
 \qquad
-V(r) = \left(1 - \frac{2M}{r}\right)!\left(\varepsilon + \frac{L^2}{r^2}\right).
+V(r) = \left(1 - \frac{2M}{r}\right)\left(\varepsilon + \frac{L^2}{r^2}\right).
 $$
 
 $E$ and $L$ are set from the starting conditions and then held fixed; watching
@@ -167,7 +167,7 @@ effective potential $V(r)$. It is stable at a minimum and unstable at a maximum.
 - For photons the only circular orbit is the **photon sphere** at $r = 3M$, and
   it is unstable. That is why a photon aimed near it either spirals in or peels
   away, which produces a sharp capture threshold at the **critical impact
-  parameter** $b_\text{crit} = 3\sqrt3\,M \approx 5.196\,M$: below it the photon
+  parameter** $b_\text{crit} = 3\sqrt3\thinspace M \approx 5.196\thinspace M$: below it the photon
   is captured, above it the photon escapes.
 - For massive particles, circular orbits exist for $r > 3M$; they are stable
   outside $r = 6M$ and unstable inside it. The boundary $r = 6M$ is the
@@ -180,7 +180,7 @@ Firing a whole beam of photons makes the capture threshold visible as a shadow:
   <img src="figures/fan.gif" alt="Photon beam and the shadow">
 </p>
 
-Red rays (those with $|b| < 3\sqrt3\,M$) are captured and carve out the dark
+Red rays (those with $|b| < 3\sqrt3\thinspace M$) are captured and carve out the dark
 shadow; rays just outside the threshold whirl around the photon sphere; the rest
 bend away. Regenerate with `python simulation/viz/animate_fan.py`.
 
@@ -211,7 +211,7 @@ precession, the same effect first measured for Mercury. Regenerate with
 | Quantity | Value | Meaning |
 | --- | --- | --- |
 | Photon sphere | $r = 3M$ | unstable circular light orbit |
-| Critical impact parameter | $b_\text{crit} = 3\sqrt3\,M \approx 5.196\,M$ | capture threshold for photons |
+| Critical impact parameter | $b_\text{crit} = 3\sqrt3\thinspace M \approx 5.196\thinspace M$ | capture threshold for photons |
 | ISCO | $r = 6M$ | innermost stable circular orbit (massive) |
 | Weak-field deflection | $\delta\varphi \to 4M/b$ | Einstein's light bending at large $b$ |
 | $E$, $L$ | constant | bounded drift over a long integration |
@@ -231,17 +231,17 @@ The geodesic system $dy/d\lambda = f(y)$ has no closed-form solution in general,
 so it is advanced numerically with explicit Runge-Kutta methods.
 
 The simplest method, Euler's, walks straight along the current slope,
-$y_{n+1} = y_n + h\,f(y_n)$. It is easy but inaccurate, because the slope changes
+$y_{n+1} = y_n + h\thinspace f(y_n)$. It is easy but inaccurate, because the slope changes
 during the step; its error per step grows like $h^2$.
 
 **RK4** samples the slope four times across each step and takes a weighted
 average:
 
 $$
-k_1 = f(y_n), \;
-k_2 = f\!\left(y_n + \tfrac{h}{2}k_1\right), \;
-k_3 = f\!\left(y_n + \tfrac{h}{2}k_2\right), \;
-k_4 = f\!\left(y_n + h\,k_3\right),
+k_1 = f(y_n), \quad
+k_2 = f\left(y_n + \tfrac{h}{2}k_1\right), \quad
+k_3 = f\left(y_n + \tfrac{h}{2}k_2\right), \quad
+k_4 = f\left(y_n + h\thinspace k_3\right),
 $$
 
 $$
@@ -273,12 +273,12 @@ $\Delta = r^2 - 2Mr + a^2$,
 
 $$
 ds^2 = -\left(1 - \frac{2Mr}{\Sigma}\right)dt^2
-       - \frac{4Mar\sin^2\theta}{\Sigma}\,dt\,d\varphi
-       + \frac{\Sigma}{\Delta}\,dr^2 + \Sigma\,d\theta^2
-       + \left(r^2 + a^2 + \frac{2Ma^2r\sin^2\theta}{\Sigma}\right)\sin^2\theta\,d\varphi^2.
+       - \frac{4Mar\sin^2\theta}{\Sigma}\thinspace dt\thinspace d\varphi
+       + \frac{\Sigma}{\Delta}\thinspace dr^2 + \Sigma\thinspace d\theta^2
+       + \left(r^2 + a^2 + \frac{2Ma^2r\sin^2\theta}{\Sigma}\right)\sin^2\theta\thinspace d\varphi^2.
 $$
 
-The cross term $dt\,d\varphi$ is **frame dragging**: rotation ties time to
+The cross term $dt\thinspace d\varphi$ is **frame dragging**: rotation ties time to
 azimuth, so there is no way to sit still near the hole. The horizons are at
 $\Delta = 0$, giving the event horizon $r_+ = M + \sqrt{M^2 - a^2}$. Spin also
 breaks the planar symmetry, so orbits are genuinely three-dimensional and the
@@ -297,12 +297,12 @@ Rather than the roughly forty Christoffel symbols of the second-order geodesic
 equation, we integrate Hamilton's equations for the super-Hamiltonian
 $H = \tfrac12 g^{\mu\nu}p_\mu p_\nu$ (fixed at $0$ for photons, $-\tfrac12$ for
 massive particles), on the state
-$y = (t, r, \theta, \varphi,\; p_t, p_r, p_\theta, p_\varphi)$:
+$y = (t, r, \theta, \varphi,\quad p_t, p_r, p_\theta, p_\varphi)$:
 
 $$
 \frac{dx^\mu}{d\lambda} = g^{\mu\nu} p_\nu,
 \qquad
-\frac{dp_\mu}{d\lambda} = -\tfrac12\,(\partial_\mu g^{\alpha\beta})\,p_\alpha p_\beta.
+\frac{dp_\mu}{d\lambda} = -\tfrac12\thinspace (\partial_\mu g^{\alpha\beta})\thinspace p_\alpha p_\beta.
 $$
 
 This needs only the inverse metric and its derivatives, not Christoffel symbols.
@@ -319,8 +319,8 @@ agree to about $10^{-11}$ over a long orbit.
 | Quantity | Value | Notes |
 | --- | --- | --- |
 | Outer horizon | $r_+ = M + \sqrt{M^2 - a^2}$ | goes to $2M$ at $a=0$, to $M$ when extremal |
-| Photon orbit (prograde) | $2M\{1 + \cos[\tfrac{2}{3}\arccos(-a/M)]\}$ | goes to $3M$ at $a=0$, to $M$ extremal |
-| Photon orbit (retrograde) | $2M\{1 + \cos[\tfrac{2}{3}\arccos(+a/M)]\}$ | goes to $3M$ at $a=0$, to $4M$ extremal |
+| Photon orbit (prograde) | $2M\lbrace 1 + \cos[\tfrac{2}{3}\arccos(-a/M)]\rbrace$ | goes to $3M$ at $a=0$, to $M$ extremal |
+| Photon orbit (retrograde) | $2M\lbrace 1 + \cos[\tfrac{2}{3}\arccos(+a/M)]\rbrace$ | goes to $3M$ at $a=0$, to $4M$ extremal |
 | $a = 0$ limit | Schwarzschild | trajectories match the Schwarzschild code |
 | $E$, $L_z$, $Q$, $H$ | constant | bounded drift over a long integration |
 
@@ -377,7 +377,7 @@ Each pixel's ray ends in one of three ways:
 
 The camera sits far from the hole (`r_cam`, default $1000M$, where space is
 nearly flat) and looks at it from an inclination `incl` measured off the spin
-axis. At $90°$ the disk is seen edge-on as a thin line; the default $80°$ tips it
+axis. At 90° the disk is seen edge-on as a thin line; the default 80° tips it
 just enough to see the top of the disk as a surface. Rays are sent parallel to
 each other (an orthographic view), one through each point of a square image plane
 `half_width` across. For each pixel the starting point and direction are turned
@@ -394,10 +394,10 @@ the Doppler shift of the orbiting gas, and the gravitational shift of climbing
 out of the well. For a static observer far away and an emitter orbiting with
 angular velocity $\Omega$,
 
-$$g = \frac{-p_t}{-u^t\,(p_t + \Omega\, p_\phi)},$$
+$$g = \frac{-p_t}{-u^t\thinspace (p_t + \Omega\thinspace p_\phi)},$$
 
 using the Kerr circular-orbit values $\Omega = \sqrt{M}/(r^{3/2} + a\sqrt{M})$
-and $u^t = (r^{3/2} + a\sqrt{M}) / \sqrt{r^3 - 3Mr^2 + 2a\sqrt{M}\,r^{3/2}}$. The
+and $u^t = (r^{3/2} + a\sqrt{M}) / \sqrt{r^3 - 3Mr^2 + 2a\sqrt{M}\thinspace r^{3/2}}$. The
 photon's conserved $p_t$ and $p_\phi$ are already carried in its state at the
 crossing. Observed brightness goes as $g^4$: the side of the disk turning toward
 us is blueshifted and beamed bright, the receding side reddened and dimmed. This
